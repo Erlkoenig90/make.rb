@@ -11,29 +11,38 @@ module MakeRbCCxx
 	end
 	
 	class Compiler < MakeRb::Builder
-		def buildDo
+	end
+	class GCC < Compiler
+		attr_reader :flags
+		def initialize(flags, *x)
+			super(*x)
+			@flags = flags
+		end
+		def buildDo(mgr)
 			if(targets.size != 1 || (!targets[0].is_a?(MakeRb::FileRes)))
-				throw "Invalid target specification"
+				raise "Invalid target specification"
 			end
 			sources.each { |s|
 				if (!s.is_a?(MakeRb::FileRes))
-					throw "Invalid source specification"
+					raise "Invalid source specification"
 				end
 			}
 			
 			cxx = sources.inject(false) { |o,s| o || s.is_a?(CxxFile) }
+			tool = if(cxx) then "g++" else "gcc"
+			p_flags = if(cxx) then mgr.platform.cxx_flags else mgr.platform.cc_flags end
 			
-			[if cxx then "g++" else "gcc" end, "-fPIC", "-c", "-o", targets[0].filename] + sources.map{|s| s.filename }
+			[mgr.platform.cl_prefix + tool, "-c", "-o", targets[0].filename] + sources.map{|s| s.filename } + flags + p_flags
 		end
 	end
 	class Linker < MakeRbBinary::Linker
-		def buildDo
+		def buildDo(mgr)
 			if(targets.size != 1 || (!targets[0].is_a?(MakeRbBinary::LinkedFile)))
-				throw "Invalid target specification"
+				raise "Invalid target specification"
 			end
 			sources.each { |s|
 				if (!s.is_a?(MakeRb::FileRes))
-					throw "Invalid source specification"
+					raise "Invalid source specification"
 				end
 			}
 			

@@ -1,5 +1,7 @@
 #!/usr/bin/env ruby
 
+require "platform.rb"
+
 module MakeRb
 	def MakeRb.safePreUse(arr)
 		for i in 0...arr.size
@@ -9,7 +11,7 @@ module MakeRb
 				for j in 0...i
 					arr[j].postUse
 				end
-				throw $!
+				raise
 			end
 		end
 	end
@@ -21,7 +23,7 @@ module MakeRb
 				for j in 0...i
 					arr[j].postBuild
 				end
-				throw $!
+				raise
 			end
 		end
 	end
@@ -32,42 +34,48 @@ module MakeRb
 			@builder = nil
 		end
 		def name
-			throw "Resource#name must be overriden!"
+			raise "Resource#name must be overriden!"
 		end
 	end
 	module Usable
 		attr_reader :refcount
-		def initialize
+		def initialize(*x)
 			@refcount = 0
+			super(*x)
 		end
 		def preUse
-			@refcount++
+			@refcount += 1
 			if(@refcount == 1)
 				preUseDo
 			end
 		end
 		def postUse
-			@refcount--
+			@refcount -= 1
 			if(@refcount == 0)
 				postUseDo
 			end
 		end
+		def preUseDo
+		end
+		def postUseDo
+		end
 	end
 	module Generated
 		attr_reader :locked
-		def initialize
+		def initialize(*x)
 			@locked = false
+			super(*x)
 		end
 		
 		def lock
 			if(@locked)
-				throw name + " is already locked";
+				raise name + " is already locked";
 			end
 			@locked = true
 		end
 		def unlock
 			if(!@locked)
-				throw name + " is not locked";
+				raise name + " is not locked";
 			end
 			@locked = false
 		end
@@ -84,10 +92,11 @@ module MakeRb
 		def initialize(filename)
 			@name = File.basename(filename)
 			@filename = filename
+			super()
 		end
 		def rebuild?(other)
 			if(!other.is_a?(FileRes))
-				throw other.name + " is not a FileRes"
+				raise other.name + " is not a FileRes"
 			end
 			own = begin
 				File.mtime(filename)
@@ -99,56 +108,56 @@ module MakeRb
 	end
 	class Builder
 		attr_reader :sources, :targets
-		def initialize(sources,targets)
-			if(!sources.is_a?(Array))
-				@sources = [sources]
+		def initialize(src,t)
+			if(!src.is_a?(Array))
+				@sources = [src]
 			else
-				@sources = sources
+				@sources = src
 			end
 			
-			if(!targets.is_a?(Array))
-				@targets = [targets]
+			if(!t.is_a?(Array))
+				@targets = [t]
 			else
-				@targets = targets
+				@targets = t
 			end
-			targets.foreach { |t| t.addBuilder(self) }
+			@targets.each { |t| t.builder=self }
 		end
 		def rebuild?
 			@targets.inject(false) { |old,target|
 				old || @sources.inject(false) { |old2,source|
-					old || target.rebuild(source)
+					old || target.rebuild?(source)
 				}
 			}
 		end
-		def build
+		def build(mgr)
 			MakeRb.safePreUse(@sources)
 			begin
 				MakeRb.safePreBuild(@targets)
 			rescue
 				@sources.each { |s| s.postUse }
-				throw $!
+				raise
 			end
 			
 			begin
-				cmd = buildDo
-				puts cmd.join(" ")
+				cmd = ["./run"] + buildDo(mgr)
+#				puts cmd.join(" ")
 				if(cmd != nil)
 					r, w = IO.pipe
 					pid = spawn(*cmd, :out=>w, :err=>w, r=>:close, :in=>"/dev/zero")
 					w.close
 					
-					[r, pid]
+					[cmd, pid, r]
 				else
 					nil
 				end
 			rescue
 				@sources.each { |s| s.postUse }
 				@targets.each { |s| s.postBuild }
-				throw $!
+				raise
 			end
 		end
 		def buildDo
-			throw "Builder#buildDo has to be overriden!"
+			raise "Builder#buildDo has to be overriden!"
 		end
 		def locked
 			targets.inject(false) { |o,t| (o || t.locked) }
@@ -161,22 +170,67 @@ module MakeRb
 		end
 	end
 	class BuildMgr
-		class LockedException
+		class LockedException < Exception
+		end
+		class Job
+			attr_accessor :pid, :pipe, :out, :builder, :cmd
+			def initialize()
+				@pid = -1
+				@pipe = nil
+				@out = ""
+				@builder = nil
+				@cmd = nil
+			end
+			def set(cmd, pid, pipe, builder)
+				@cmd = cmd
+				@pid = pid
+				@pipe = pipe
+				@builder = builder
+				@out = ""
+			end
+			def reset
+				@cmd = nil
+				@pid = -1
+				@out = nil
+				@pipe.close
+				@builder = nil
+			end
+			def isset
+				@pid != -1
+			end
+			def read(force = false)
+				if(force)
+					@out << @pipe.read
+				else
+					r = 0
+					begin
+						if(!(@pipe.eof?))
+							str = @pipe.read_nonblock(8*1024)
+							r = str.length
+							@out << str
+						end
+					end while r > 0 && !(@pipe.eof?)
+				end
+			end
+			def eof?
+				@pipe.eof?
+			end
 		end
 		
-		attr_reader :builders, :jobs
-		def initialize(builders)
-			@builders = builders
+		attr_reader :jobs, :platform
+		def initialize()
 			@jobs = 4
+			@platform = Platform.new("x86_64-unknown-linux-gnu", "x86_64-unknown-linux-gnu-")
 		end
 		def build(targets)
-			procs = Array.new(@jobs, nil)
+			procs = Array.new(@jobs) { |i| Job.new }
 			jcount = 0
 			
 			run = true
 			while(run)
+#				puts "== ITERATION =="
 				# Start new tasks
-				while(jcount < @jobs)
+				while(jcount < procs.length)
 					builder = nil
 					locked = false
 					targets.each { |target|
@@ -190,18 +244,24 @@ module MakeRb
 						end
 					}
 					if(builder == nil)
+#						puts "Nothing to build found"
 						if(!locked)
 							run = false
+						else
+							if(jcount == 0)
+								puts "Error: jcount = 0, but locks where found"
+							end
 						end
 						break
 					else
 						builder.lock
-						res = builder.build
+						res = builder.build(self)
 						if(res != nil)
-							jcount++
-							for i in 0...@jobs
-								if(procs[i] == nil)
-									procs[i] = res
+							jcount += 1
+							for i in 0...procs.length
+								if(!procs[i].isset)
+									procs[i].set(res[0], res[1], res[2], builder)
+									puts "[" + i.to_s + "] " + procs[i].cmd.join(" ")
 									break
 								end
 							end
@@ -209,19 +269,66 @@ module MakeRb
 					end
 				end
 				
+				if(jcount == 0)
+					puts "Nothing to do anymore."
+					break
+				end
 				
+				# Wait for input
+				fds = procs.select{ |j| j.isset }.map { |j| j.pipe }
+
+				if(fds.length == 0)
+					puts "Error: fds.length = 0. jcount = " + jcount.to_s
+					exit
+				end
+				
+#				$stdout.write "==SELECT== "
+#				before = Time.now
+				IO.select(fds)
+#				delay = Time.now - before
+#				puts delay.to_s
+				
+				forcewait = false
+				for i in 0...procs.length
+					if(procs[i].isset)
+						# Read input data
+						procs[i].read(forcewait)
+						
+						# Exited or force wait
+						if(forcewait || procs[i].eof?)
+							begin
+								Process.waitpid(procs[i].pid)
+							end while (!($?.exited?))
+							
+							if($?.exitstatus != 0)
+								puts "Command failed:"
+								puts procs[i].cmd.join(" ")
+								puts procs[i].out
+								run = false
+								forcewait = true
+							end
+							
+							procs[i].builder.unlock
+							procs[i].reset
+							jcount -= 1
+						end
+					end
+				end
 			end
 		end
-		def find(target)
+		def find(target,depth=0)
+			indent = ("  "*depth)
+#			puts indent + "find(" + target.name + ")"
 			if(target.is_a?(Generated))
 				if(target.builder.locked)
-					throw new LockedException
+#					puts indent + "locked"
+					raise LockedException.new
 				else
 					found = nil
 					ex = nil
 					target.builder.sources.each { |s|
 						begin
-							found = find(s)
+							found = find(s,depth+1)
 						rescue LockedException
 							ex = $!
 						end
@@ -231,7 +338,7 @@ module MakeRb
 						end
 					}
 					if(ex != nil && found == nil)
-						throw ex
+						raise ex
 					end
 					if(found == nil)
 						if(target.builder.rebuild?)
@@ -247,9 +354,10 @@ module MakeRb
 	end
 end
 
-require "./makerb_binary"
-require "./makerb_ccxx"
+require "makerb_binary"
+require "makerb_ccxx"
 
+if false
 s1 = MakeRbCCxx::CFile.new("foo.c")
 s2 = MakeRbCCxx::CxxFile.new("bar.cc")
 o1 = MakeRbCCxx::CObjFile.new("foo.o")
@@ -262,6 +370,26 @@ e1 = MakeRbBinary::DynLibrary.new("foo")
 
 l1 = MakeRbCCxx::Linker.new([o1, o2],e1)
 
-c1.build
-c2.build
-l1.build
+mgr = MakeRb::BuildMgr.new()
+mgr.build([e1])
+end
+
+Dir.open(".") { |d|
+	objs = []
+	d.each { |f|
+		if (f != "." && f != ".." && /\.cc$/.match(f))
+#			puts f
+			c = MakeRbCCxx::CxxFile.new(f)
+			o = MakeRbCCxx::CxxObjFile.new(File.basename(f, ".cc") + ".o")
+			cl = MakeRbCCxx::Compiler.new(c, o)
+			
+			objs << o
+		end
+	}
+	lib = MakeRbBinary::DynLibrary.new("bar.so")
+	lin = MakeRbCCxx::Linker.new(objs, lib)
+	
+	mgr = MakeRb::BuildMgr.new()
+	mgr.build([lib])
+}
+
