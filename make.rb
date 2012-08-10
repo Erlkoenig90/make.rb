@@ -1,5 +1,7 @@
 #!/usr/bin/env ruby
 
+require 'pathname'
+require "settings.rb"
 require "platform.rb"
 
 module MakeRb
@@ -89,9 +91,14 @@ module MakeRb
 		include Usable
 		
 		attr_reader :name, :filename
-		def initialize(filename)
-			@name = File.basename(filename)
-			@filename = filename
+		def initialize(fname)
+			if(!fname.is_a?(Pathname))
+				@name = File.basename(fname)
+				fname = Pathname.new(fname)
+			else
+				@name = fname.basename.to_s
+			end
+			@filename = fname
 			super()
 		end
 		def rebuild?(other)
@@ -107,8 +114,8 @@ module MakeRb
 		end
 	end
 	class Builder
-		attr_reader :sources, :targets
-		def initialize(src,t)
+		attr_reader :sources, :targets, :platform, :buildMgr, :flags
+		def initialize(pf, mgr, fl, src,t)
 			if(!src.is_a?(Array))
 				@sources = [src]
 			else
@@ -121,6 +128,14 @@ module MakeRb
 				@targets = t
 			end
 			@targets.each { |t| t.builder=self }
+
+			@platform = pf
+			@buildMgr = mgr
+			if(fl == nil)
+				@flags = MakeRb::Flags.new()
+			else
+				@flags = fl
+			end
 		end
 		def rebuild?
 			@targets.inject(false) { |old,target|
@@ -129,7 +144,7 @@ module MakeRb
 				}
 			}
 		end
-		def build(mgr)
+		def build
 			MakeRb.safePreUse(@sources)
 			begin
 				MakeRb.safePreBuild(@targets)
@@ -139,8 +154,8 @@ module MakeRb
 			end
 			
 			begin
-				cmd = ["./run"] + buildDo(mgr)
-#				puts cmd.join(" ")
+				cmd = buildDo
+#				puts "spawning " + cmd.join(" ")
 				if(cmd != nil)
 					r, w = IO.pipe
 					pid = spawn(*cmd, :out=>w, :err=>w, r=>:close, :in=>"/dev/zero")
@@ -217,10 +232,16 @@ module MakeRb
 			end
 		end
 		
-		attr_reader :jobs, :platform
-		def initialize()
+		attr_reader :jobs, :pf_build, :pf_host, :pf_target, :settings, :builders, :resources
+		def initialize(b = Platform.native, h = Platform.native, t = Platform.native)
 			@jobs = 4
-			@platform = Platform.new("x86_64-unknown-linux-gnu", "x86_64-unknown-linux-gnu-")
+			@pf_build = b		# the machine we are compiling on
+			@pf_host = h		# the machine the code will run on
+			@pf_target = t		# the machine the compiled programm will produce code for. only useful for compilers.
+			
+			@settings = CommonSettings.new	# Project specific settings
+			@builders = []
+			@resources = []
 		end
 		def build(targets)
 			procs = Array.new(@jobs) { |i| Job.new }
@@ -228,7 +249,7 @@ module MakeRb
 			
 			run = true
 			while(run)
-#				puts "== ITERATION =="
+				puts "== ITERATION =="
 				# Start new tasks
 				while(jcount < procs.length)
 					builder = nil
@@ -244,7 +265,7 @@ module MakeRb
 						end
 					}
 					if(builder == nil)
-#						puts "Nothing to build found"
+						puts "Nothing to build found"
 						if(!locked)
 							run = false
 						else
@@ -255,7 +276,8 @@ module MakeRb
 						break
 					else
 						builder.lock
-						res = builder.build(self)
+						res = builder.build
+#						puts "bla"
 						if(res != nil)
 							jcount += 1
 							for i in 0...procs.length
@@ -282,11 +304,11 @@ module MakeRb
 					exit
 				end
 				
-#				$stdout.write "==SELECT== "
-#				before = Time.now
+				$stdout.write "==SELECT== "
+				before = Time.now
 				IO.select(fds)
-#				delay = Time.now - before
-#				puts delay.to_s
+				delay = Time.now - before
+				puts delay.to_s
 				
 				forcewait = false
 				for i in 0...procs.length
@@ -318,7 +340,7 @@ module MakeRb
 		end
 		def find(target,depth=0)
 			indent = ("  "*depth)
-#			puts indent + "find(" + target.name + ")"
+			puts indent + "find(" + target.name + ")"
 			if(target.is_a?(Generated))
 				if(target.builder.locked)
 #					puts indent + "locked"
@@ -351,29 +373,87 @@ module MakeRb
 				nil
 			end
 		end
+		
+		def newchain(pf,classes,args)
+			step = args.map {|n| classes[0].new(n) }
+			chain(pf,classes[1..-1],step)
+		end
+		def chain(pf,classes,step)
+			i = 0
+			while i+1 < classes.length
+				nextstep = step.map { |s|
+					r = classes[i+1].auto(s)
+					@resources << r
+					r
+				}
+				builders = Array.new(step.length)
+				for j in 0...step.length
+					@builders << classes[i].new(pf, self, nil, step[j], nextstep[j])
+				end
+				
+				step = nextstep
+				
+				i = i + 2
+			end
+			
+			step
+		end
+		def join(pf,bclass,eclass,step,*args)
+			last = eclass.new(*args)
+			builder = bclass.new(pf, self, nil, step, last)
+			@builders << builder
+			@resources << last
+			last
+		end
 	end
 end
 
 require "makerb_binary"
 require "makerb_ccxx"
 
+if true
+mgr = MakeRb::BuildMgr.new
+
+e = mgr.join(mgr.pf_host, MakeRbCCxx::GCCLinker, MakeRbBinary::Executable, (
+	mgr.newchain(mgr.pf_host, [MakeRbCCxx::CxxFile, MakeRbCCxx::GCC, MakeRbCCxx::CxxObjFile], ["bar.cc", "bar.2.cc"]) +
+	mgr.newchain(mgr.pf_host, [MakeRbCCxx::CFile, MakeRbCCxx::GCC, MakeRbCCxx::CObjFile], ["foo.c"])),
+	"foo")
+
+mgr.settings.cc[MakeRbCCxx::GCC].flags << MakeRb::PkgConfigCflags.new("gtk+-2.0")
+mgr.settings.cxx[MakeRbCCxx::GCC].flags << MakeRb::PkgConfigCflags.new("gtk+-2.0")
+mgr.settings.ld[MakeRbCCxx::GCCLinker].flags << MakeRb::PkgConfigLDflags.new("gtk+-2.0")
+
+mgr.build([e])
+
+end
+
 if false
+mgr = MakeRb::BuildMgr.new# (MakeRb::Platform.native, MakeRb::Platform.native, MakeRb::Platform.native)
+
+mgr.settings.cc[MakeRbCCxx::GCC].flags << MakeRb::StaticFlag.new("-Wall")
+mgr.settings.cxx[MakeRbCCxx::GCC].flags << MakeRb::StaticFlag.new("-Wall")
+mgr.settings.cc[MakeRbCCxx::GCC].flags << MakeRb::PkgConfigCflags.new("gtk+-2.0")
+mgr.settings.cxx[MakeRbCCxx::GCC].flags << MakeRb::PkgConfigCflags.new("gtk+-2.0")
+
+mgr.settings.ld[MakeRbCCxx::GCCLinker].flags << MakeRb::StaticFlag.new("-Wl,--gc-sections")
+mgr.settings.ld[MakeRbCCxx::GCCLinker].flags << MakeRb::PkgConfigLDflags.new("gtk+-2.0")
+
 s1 = MakeRbCCxx::CFile.new("foo.c")
 s2 = MakeRbCCxx::CxxFile.new("bar.cc")
 o1 = MakeRbCCxx::CObjFile.new("foo.o")
 o2 = MakeRbCCxx::CxxObjFile.new("bar.o")
 
-c1 = MakeRbCCxx::Compiler.new(s1,o1)
-c2 = MakeRbCCxx::Compiler.new(s2,o2)
+c1 = MakeRbCCxx::GCC.new(mgr.pf_host, mgr, nil, s1,o1)
+c2 = MakeRbCCxx::GCC.new(mgr.pf_host, mgr, nil, s2,o2)
 
-e1 = MakeRbBinary::DynLibrary.new("foo")
+e1 = MakeRbBinary::Executable.new("foo")
 
-l1 = MakeRbCCxx::Linker.new([o1, o2],e1)
+l1 = MakeRbCCxx::GCCLinker.new(mgr.pf_host, mgr, nil, [o1, o2],e1)
 
-mgr = MakeRb::BuildMgr.new()
 mgr.build([e1])
 end
 
+if false
 Dir.open(".") { |d|
 	objs = []
 	d.each { |f|
@@ -387,9 +467,10 @@ Dir.open(".") { |d|
 		end
 	}
 	lib = MakeRbBinary::DynLibrary.new("bar.so")
-	lin = MakeRbCCxx::Linker.new(objs, lib)
+	lin = MakeRbCCxx::GCCLinker.new(objs, lib)
 	
 	mgr = MakeRb::BuildMgr.new()
 	mgr.build([lib])
 }
 
+end
