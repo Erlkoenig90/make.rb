@@ -15,5 +15,11 @@ module MakeRb
 		def self.native()
 			@@native ||= Platform.new("native", Hash.new(""))
 		end
+		def clone
+			Platform.new(name, cl_prefix, settings.clone)
+		end
+	end
+	def MakeRb.platforms
+		@platforms ||= { "native" => Platform.native }
 	end
 end

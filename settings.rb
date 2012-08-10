@@ -46,19 +46,28 @@ module MakeRb
 		def get
 			inject([]) { |o,f| o+f.get }
 		end
+		def clone
+			map { |f| f.clone }
+		end
 	end
 	class BuilderSettings
 		attr_reader :flags
 		def initialize(flags)
 			@flags = flags
 		end
+		def clone
+			BuilderSettings.new(flags.clone)
+		end
 	end
 	class CommonSettings
-		attr_reader :cc, :cxx, :ld
-		def initialize
-			@cc = newEmptySettings
-			@cxx = newEmptySettings
-			@ld = newEmptySettings
+		attr_accessor :cc, :cxx, :ld, :def_compiler, :def_linker
+		def initialize(c=nil, cx=nil, l=nil, def_cmp=nil, def_ld=nil)
+			@cc = if(c == nil) then newEmptySettings else c end
+			@cxx = if(cx == nil) then newEmptySettings else cx end
+			@ld = if(l == nil) then newEmptySettings else l end
+			
+			@def_compiler = if(def_cmp == nil) then MakeRbCCxx::GCC else def_cmp end
+			@def_linker = if(def_linker == nil) then MakeRbCCxx::GCCLinker else def_linker end
 		end
 		def newEmptySettings
 			Hash.new { |hash,key|
@@ -66,6 +75,9 @@ module MakeRb
 				hash[key] = s
 				s
 			}
+		end
+		def clone
+			CommonSettings.new(cc.clone, cxx.clone, ld.clone, def_compiler, def_linker)
 		end
 	end
 end

@@ -67,4 +67,8 @@ module MakeRbCCxx
 			end
 		end
 	end
+	
+	def MakeRbCCxx.compilers
+		@compilers ||= {"gcc" => ["GNU Compiler Collection", GCC, GCCLinker], "cl" => ["Microsoft C/C++ Compiler", nil, nil]}
+	end
 end

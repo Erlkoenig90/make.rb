@@ -1,8 +1,12 @@
 #!/usr/bin/env ruby
 
 require 'pathname'
-require "settings.rb"
-require "platform.rb"
+require 'optparse'
+require 'settings.rb'
+require 'platform.rb'
+
+# TODO: Keep-going
+
 
 module MakeRb
 	def MakeRb.safePreUse(arr)
@@ -233,15 +237,14 @@ module MakeRb
 		end
 		
 		attr_reader :jobs, :pf_build, :pf_host, :pf_target, :settings, :builders, :resources
-		def initialize(b = Platform.native, h = Platform.native, t = Platform.native)
-			@jobs = 4
-			@pf_build = b		# the machine we are compiling on
-			@pf_host = h		# the machine the code will run on
-			@pf_target = t		# the machine the compiled programm will produce code for. only useful for compilers.
-			
+		def initialize
 			@settings = CommonSettings.new	# Project specific settings
+			
 			@builders = []
 			@resources = []
+			@pf_build = nil
+			@pf_host = nil
+			@pf_target = nil
 		end
 		def build(targets)
 			procs = Array.new(@jobs) { |i| Job.new }
@@ -405,72 +408,94 @@ module MakeRb
 			@resources << last
 			last
 		end
+		def run(&block)
+			@pf_build = Platform.native.clone
+			@pf_host = Platform.native.clone
+			@pf_target = Platform.native.clone
+			optparse = OptionParser.new { |opts|
+				opts.banner = "Usage: #{$0} [options] [targets]"
+				@jobs = 1
+				opts.on('-j', '--jobs N', 'Run up to N jobs simultaneously, default 1') { |j|
+					@jobs = j.to_i
+				}
+				opts.on('-h', '--help', 'Display this help screen') {
+					puts opts
+					puts 'Possible compiler toolchains to specify:'
+					MakeRbCCxx.compilers.each { |key,val|
+						puts "\t" + key + "\t\t" + val[0];
+					}
+					
+					exit
+				}
+				opts.on('--build PLATFORM', 'Specify the platform we are compiling on.') { |p|
+					@pf_build = MakeRb.platforms[p]
+					if(@pf_build == nil)
+						raise "Platform `#{p}' not found."
+					end
+					@pf_build = @pf_build.clone
+				}
+				opts.on('--host PLATFORM', 'Specify the platform the compiled program will run on.') { |p|
+					@pf_host = MakeRb.platforms[p]
+					if(@pf_host == nil)
+						raise "Platform `#{p}' not found."
+					end
+					@pf_host = @pf_host.clone
+				}
+				opts.on('--target PLATFORM', 'Specify the platform the compiled program will produce code for; only useful for compilers.') { |p|
+					@pf_target = MakeRb.platforms[p]
+					if(@pf_target == nil)
+						raise "Platform `#{p}' not found."
+					end
+					@pf_target = @pf_target.clone
+				}
+				
+				['build','host','target'].each { |type|
+					opts.on("--#{type}-compiler CL", "Specify the compiler+linker toolchain to use for the `#{type}\' platform. See below for possible values") { |clname|
+						tc = MakeRbCCxx::compilers[clname]
+						if(tc == nil)
+							raise "`#{clname}' is not a valid compiler"
+						end
+						pf = instance_variable_get('@pf_' + type)
+						pf.settings.def_compiler = tc[1]					
+						pf.settings.def_linker = tc[2]
+					}
+					['cc','cxx','ld'].each { |tool|
+						opts.on("--#{type}-#{tool}flags FLAGS", "Specify #{tool} flags for use on the `#{type}' platform.") { |flags|
+							# TODO: better parsing
+							flags = flags.split(" ").map { |str| MakeRb::StaticFlag.new(str) }
+							pf = instance_variable_get('@pf_' + type)
+							
+							klass = if(tool == 'ld') then pf.settings.def_linker else pf.settings.def_compiler end
+							pf.settings.method(tool).call()[klass].flags.concat (flags)
+						}
+					}
+				}
+			}
+			
+			optparse.parse!
+			
+			@pf_build = @pf_build.clone
+			@pf_host = @pf_host.clone
+			@pf_target = @pf_target.clone
+			
+			block.call(self)
+			
+			targets = ARGV.map { |n|
+				i = @resources.index { |r| r.name == n }
+				if(i == nil)
+					raise "Target `#{n}' not found!"
+				end
+				@resources[i]
+			}
+			build(targets)
+		end
+		def BuildMgr.run(&block)
+			mgr = BuildMgr.new
+			mgr.run(&block)
+		end
 	end
 end
 
-require "makerb_binary"
-require "makerb_ccxx"
+require 'makerb_binary'
+require 'makerb_ccxx'
 
-if true
-mgr = MakeRb::BuildMgr.new
-
-e = mgr.join(mgr.pf_host, MakeRbCCxx::GCCLinker, MakeRbBinary::Executable, (
-	mgr.newchain(mgr.pf_host, [MakeRbCCxx::CxxFile, MakeRbCCxx::GCC, MakeRbCCxx::CxxObjFile], ["bar.cc", "bar.2.cc"]) +
-	mgr.newchain(mgr.pf_host, [MakeRbCCxx::CFile, MakeRbCCxx::GCC, MakeRbCCxx::CObjFile], ["foo.c"])),
-	"foo")
-
-mgr.settings.cc[MakeRbCCxx::GCC].flags << MakeRb::PkgConfigCflags.new("gtk+-2.0")
-mgr.settings.cxx[MakeRbCCxx::GCC].flags << MakeRb::PkgConfigCflags.new("gtk+-2.0")
-mgr.settings.ld[MakeRbCCxx::GCCLinker].flags << MakeRb::PkgConfigLDflags.new("gtk+-2.0")
-
-mgr.build([e])
-
-end
-
-if false
-mgr = MakeRb::BuildMgr.new# (MakeRb::Platform.native, MakeRb::Platform.native, MakeRb::Platform.native)
-
-mgr.settings.cc[MakeRbCCxx::GCC].flags << MakeRb::StaticFlag.new("-Wall")
-mgr.settings.cxx[MakeRbCCxx::GCC].flags << MakeRb::StaticFlag.new("-Wall")
-mgr.settings.cc[MakeRbCCxx::GCC].flags << MakeRb::PkgConfigCflags.new("gtk+-2.0")
-mgr.settings.cxx[MakeRbCCxx::GCC].flags << MakeRb::PkgConfigCflags.new("gtk+-2.0")
-
-mgr.settings.ld[MakeRbCCxx::GCCLinker].flags << MakeRb::StaticFlag.new("-Wl,--gc-sections")
-mgr.settings.ld[MakeRbCCxx::GCCLinker].flags << MakeRb::PkgConfigLDflags.new("gtk+-2.0")
-
-s1 = MakeRbCCxx::CFile.new("foo.c")
-s2 = MakeRbCCxx::CxxFile.new("bar.cc")
-o1 = MakeRbCCxx::CObjFile.new("foo.o")
-o2 = MakeRbCCxx::CxxObjFile.new("bar.o")
-
-c1 = MakeRbCCxx::GCC.new(mgr.pf_host, mgr, nil, s1,o1)
-c2 = MakeRbCCxx::GCC.new(mgr.pf_host, mgr, nil, s2,o2)
-
-e1 = MakeRbBinary::Executable.new("foo")
-
-l1 = MakeRbCCxx::GCCLinker.new(mgr.pf_host, mgr, nil, [o1, o2],e1)
-
-mgr.build([e1])
-end
-
-if false
-Dir.open(".") { |d|
-	objs = []
-	d.each { |f|
-		if (f != "." && f != ".." && /\.cc$/.match(f))
-#			puts f
-			c = MakeRbCCxx::CxxFile.new(f)
-			o = MakeRbCCxx::CxxObjFile.new(File.basename(f, ".cc") + ".o")
-			cl = MakeRbCCxx::Compiler.new(c, o)
-			
-			objs << o
-		end
-	}
-	lib = MakeRbBinary::DynLibrary.new("bar.so")
-	lin = MakeRbCCxx::GCCLinker.new(objs, lib)
-	
-	mgr = MakeRb::BuildMgr.new()
-	mgr.build([lib])
-}
-
-end
