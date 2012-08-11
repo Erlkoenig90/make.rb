@@ -34,8 +34,9 @@ module MakeRbCCxx
 			tool = if(cxx) then "g++" else "gcc" end
 			p_flags = if(cxx) then platform.settings.cxx[self.class].flags else platform.settings.cc[self.class].flags end
 			b_flags = if(cxx) then buildMgr.settings.cxx[self.class].flags else buildMgr.settings.cc[self.class].flags end
+			d_flag = if(platform.settings.debug || buildMgr.settings.debug) then ["-g"] else [] end
 			
-			[platform.cl_prefix[self.class] + tool, "-c", "-o", targets[0].filename.to_s] + sources.map{|s| s.filename.to_s } + flags.get + p_flags.get + b_flags.get
+			[platform.cl_prefix[self.class] + tool, "-c", "-o", targets[0].filename.to_s] + sources.map{|s| s.filename.to_s } + flags.get + p_flags.get + b_flags.get + d_flag
 		end
 	end
 	class GCCLinker < MakeRbBinary::Linker
@@ -58,12 +59,13 @@ module MakeRbCCxx
 				
 				p_flags = platform.settings.ld[self.class].flags
 				b_flags = buildMgr.settings.ld[self.class].flags
+				d_flag = if(platform.settings.debug || buildMgr.settings.debug) then ["-g"] else [] end
 
 				[platform.cl_prefix[self.class] + tool] + if (targets[0].is_a?(MakeRbBinary::DynLibrary))
 					["-shared"]
 				else
 					[]
-				end + ["-o", targets[0].filename.to_s] + sources.map{|s| s.filename.to_s } + flags.get + p_flags.get + b_flags.get
+				end + ["-o", targets[0].filename.to_s] + sources.map{|s| s.filename.to_s } + flags.get + p_flags.get + b_flags.get + d_flag
 			end
 		end
 	end

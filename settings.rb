@@ -60,7 +60,7 @@ module MakeRb
 		end
 	end
 	class CommonSettings
-		attr_accessor :cc, :cxx, :ld, :def_compiler, :def_linker
+		attr_accessor :cc, :cxx, :ld, :def_compiler, :def_linker, :debug
 		def initialize(c=nil, cx=nil, l=nil, def_cmp=nil, def_ld=nil)
 			@cc = if(c == nil) then newEmptySettings else c end
 			@cxx = if(cx == nil) then newEmptySettings else cx end
@@ -68,6 +68,7 @@ module MakeRb
 			
 			@def_compiler = if(def_cmp == nil) then MakeRbCCxx::GCC else def_cmp end
 			@def_linker = if(def_linker == nil) then MakeRbCCxx::GCCLinker else def_linker end
+			@debug = false
 		end
 		def newEmptySettings
 			Hash.new { |hash,key|

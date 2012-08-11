@@ -7,9 +7,6 @@ require 'platform.rb'
 require 'trollop'
 require 'rbconfig'
 
-# TODO: Keep-going
-
-
 module MakeRb
 	def MakeRb.isWindows
 		@@is_windows ||= (RbConfig::CONFIG['host_os'] =~ /mswin|mingw|cygwin/)
@@ -205,29 +202,12 @@ module MakeRb
 		end
 		class Job
 			attr_accessor :pid, :pipe, :out, :builder, :cmd
-			def initialize()
-				@pid = -1
-				@pipe = nil
+			def initialize(cmd_, pid_, pipe_, buider_)
+				@pid = pid_
+				@pipe = pipe_
 				@out = ""
-				@builder = nil
-				@cmd = nil
-			end
-			def set(cmd, pid, pipe, builder)
-				@cmd = cmd
-				@pid = pid
-				@pipe = pipe
-				@builder = builder
-				@out = ""
-			end
-			def reset
-				@cmd = nil
-				@pid = -1
-				@out = nil
-				@pipe.close
-				@builder = nil
-			end
-			def isset
-				@pid != -1
+				@builder = buider_
+				@cmd = cmd_
 			end
 			def read(force = false)
 				if(force)
@@ -258,16 +238,16 @@ module MakeRb
 			@pf_host = nil
 			@pf_target = nil
 			@debug = false
+			@keepgoing = false
 		end
 		def build(targets)
-			procs = Array.new(@jobs) { |i| Job.new }
-			jcount = 0
+			procs = []
 			
 			run = true
 			while(run)
 				if(@debug) then puts "== ITERATION ==" end
 				# Start new tasks
-				while(jcount < procs.length)
+				while(procs.length < @jobs || @jobs == 0)
 					builder = nil
 					locked = false
 					targets.each { |target|
@@ -282,38 +262,25 @@ module MakeRb
 					}
 					if(builder == nil)
 						if(@debug) then puts "Nothing to build found" end
-						if(!locked)
-							run = false
-						else
-							if(jcount == 0)
-								puts "Error: jcount = 0, but locks where found"
-							end
-						end
 						break
 					else
 						builder.lock
 						res = builder.build
-#						puts "bla"
 						if(res != nil)
-							jcount += 1
-							for i in 0...procs.length
-								if(!procs[i].isset)
-									procs[i].set(res[0], res[1], res[2], builder)
-									puts "[" + i.to_s + "] " + procs[i].cmd.join(" ")
-									break
-								end
-							end
+							proc = Job.new(res[0], res[1], res[2], builder)
+							puts proc.cmd.join(" ")
+							procs << proc
 						end
 					end
 				end
 				
-				if(jcount == 0)
+				if(procs.count == 0)
 					puts "Nothing to do anymore."
 					break
 				end
 				
 				# Wait for input
-				fds = procs.select{ |j| j.isset }.map { |j| j.pipe }
+				fds = procs.map { |j| j.pipe }
 
 				if(fds.length == 0)
 					puts "Error: fds.length = 0. jcount = " + jcount.to_s
@@ -327,36 +294,41 @@ module MakeRb
 				if(@debug) then puts delay.to_s end
 				
 				forcewait = false
-				for i in 0...procs.length
-					if(procs[i].isset)
-						# Read input data
-						procs[i].read(forcewait)
+				procs.delete_if { |proc|
+					# Read input data
+					proc.read(forcewait)
+					
+					# Exited or force wait
+					if(forcewait || proc.eof?)
+						begin
+							Process.waitpid(proc.pid)
+						end while (!($?.exited?))
 						
-						# Exited or force wait
-						if(forcewait || procs[i].eof?)
-							begin
-								Process.waitpid(procs[i].pid)
-							end while (!($?.exited?))
-							
-							if($?.exitstatus != 0)
-								puts "Command failed:"
-								puts procs[i].cmd.join(" ")
-								puts procs[i].out
-								run = false
-								forcewait = true
-							elsif(procs[i].builder.rebuild?)
-								puts procs[i].cmd.join(" ")
-								puts "The above build process suceeded, but target is still outdated; cancelling build"
+						if($?.exitstatus != 0)
+							puts "Command failed:"
+							puts proc.cmd.join(" ")
+							puts proc.out
+							if(!@keepgoing)
 								run = false
 								forcewait = true
 							end
-							
-							procs[i].builder.unlock
-							procs[i].reset
-							jcount -= 1
+							@exitcode = 1
+						elsif(proc.builder.rebuild?)
+							puts proc.cmd.join(" ")
+							puts "The above build process suceeded, but target is still outdated"
+							if(!@keepgoing)
+								run = false
+								forcewait = true
+							end
+							@exitcode = 1
+						else
+							proc.builder.unlock
 						end
+						true
+					else
+						false
 					end
-				end
+				}
 			end
 		end
 		def find(target,depth=0)
@@ -437,14 +409,18 @@ module MakeRb
 #						puts "\t" + key + "\t\t" + val[0];
 #					}
 			opts = Trollop::options {
-				opt :jobs, 'Number of jobs to run simultaneously', :short => '-j', :default => 1
+				opt :jobs, 'Number of jobs to run simultaneously, 0 for infinite', :short => '-j', :default => 1
 				opt "build", 'Specify the platform we are compiling on.', :default => 'native'
 				opt "host", 'Specify the platform the compiled program will run on.', :default => 'native'
 				opt "target", 'Specify the platform the compiled program will produce code for; only useful for compilers.', :default => 'native'
 				opt :make_debug, 'Show debug output of the build algorithm', :default => false
+				opt :debug, 'Enable debugging on all platforms', :default => false
+				opt :keep_going, 'Don\'t abort on error, but run as many tasks as possible', :default => false, :short => '-k'
 				
 				['build','host','target'].each { |type|
 					opt "#{type}-compiler", "Specify the compiler+linker toolchain to use for the `#{type}\' platform. See below for possible values", :type => :string
+					
+					opt "#{type}-debug", "Enable debugging for the `#{type}\' platform.", :default => false
 					
 					['cc','cxx','ld'].each { |tool|
 						opt "#{type}-#{tool}flags", "Specify #{tool} flags for use on the `#{type}' platform.", :type => :string
@@ -455,6 +431,8 @@ module MakeRb
 			
 			@jobs = opts[:jobs]
 			@debug = opts[:make_debug]
+			@keepgoing = opts[:keep_going]
+			settings.debug = opts[:debug]
 			['build','host','target'].each { |type|
 				# Get the platform
 				p = opts[type]
@@ -475,6 +453,9 @@ module MakeRb
 					pf.settings.def_compiler = tc[1]					
 					pf.settings.def_linker = tc[2]
 				end
+				
+				# Get debug flag
+				pf.settings.debug = opts["#{type}-debug"]
 				
 				# Set the flags
 				['cc','cxx','ld'].each { |tool|
@@ -505,7 +486,9 @@ module MakeRb
 				}
 			end
 			puts "Building targets: " + targets.map {|t| t.name }.join(", ")
+			@exitcode = 0
 			build(targets)
+			@exitcode
 		end
 		def BuildMgr.run(&block)
 			mgr = BuildMgr.new
