@@ -5,11 +5,22 @@ require 'optparse'
 require 'settings.rb'
 require 'platform.rb'
 require 'trollop'
+require 'rbconfig'
 
 # TODO: Keep-going
 
 
 module MakeRb
+	def MakeRb.isWindows
+		@@is_windows ||= (RbConfig::CONFIG['host_os'] =~ /mswin|mingw|cygwin/)
+	end
+	def MakeRb.nullFile
+		if(isWindows)
+			"NUL"
+		else
+			"/dev/null"
+		end
+	end
 	def MakeRb.safePreUse(arr)
 		for i in 0...arr.size
 			begin
@@ -163,7 +174,7 @@ module MakeRb
 #				puts "spawning " + cmd.join(" ")
 				if(cmd != nil)
 					r, w = IO.pipe
-					pid = spawn(*cmd, :out=>w, :err=>w, r=>:close, :in=>"/dev/zero")
+					pid = spawn(*cmd, :out=>w, :err=>w, r=>:close, :in=>MakeRb.nullFile)
 					w.close
 					
 					[cmd, pid, r]
@@ -331,6 +342,12 @@ module MakeRb
 								puts "Command failed:"
 								puts procs[i].cmd.join(" ")
 								puts procs[i].out
+								run = false
+								forcewait = true
+							end
+							if(procs[i].builder.rebuild?)
+								puts procs[i].cmd.join(" ")
+								puts "The above build process suceeded, but target is still outdated; cancelling build"
 								run = false
 								forcewait = true
 							end
