@@ -71,4 +71,40 @@ module MakeRbCCxx
 	def MakeRbCCxx.compilers
 		@compilers ||= {"gcc" => ["GNU Compiler Collection", GCC, GCCLinker], "cl" => ["Microsoft C/C++ Compiler", nil, nil]}
 	end
+	
+	def MakeRbCCxx.autoProgram(mgr, exeName, sourceNames, options)
+		cFiles = []
+		cxxFiles = []
+		sourceNames.each { |fn|
+			ext = File.extname(fn).downcase
+			if(ext == ".cpp" || ext == ".cxx" || ext == ".cc")
+				cxxFiles << fn
+			else
+				cFiles << fn
+			end
+		}
+		
+		mgr.join(mgr.pf_host, mgr.pf_host.settings.def_linker, MakeRbBinary::Executable, (
+			mgr.newchain(mgr.pf_host, [CxxFile, mgr.pf_host.settings.def_compiler, CxxObjFile], cxxFiles) +
+			mgr.newchain(mgr.pf_host, [CFile, mgr.pf_host.settings.def_compiler, CObjFile], cFiles)),
+			exeName)
+		
+		if(options.include?(:pkgconfig))
+			mgr.settings.cc[mgr.pf_host.settings.def_compiler].flags << MakeRb::PkgConfigCflags.new(options[:pkgconfig])
+			mgr.settings.cxx[mgr.pf_host.settings.def_compiler].flags << MakeRb::PkgConfigCflags.new(options[:pkgconfig])
+			mgr.settings.ld[mgr.pf_host.settings.def_linker].flags << MakeRb::PkgConfigLDflags.new(options[:pkgconfig])
+		end
+		if(options.include?(:ccflags))
+			mgr.settings.cc[mgr.pf_host.settings.def_compiler].flags.concat(
+				options[:ccflags].map { |str| MakeRb::StaticFlag.new(str) })
+		end
+		if(options.include?(:cxxflags))
+			mgr.settings.cxx[mgr.pf_host.settings.def_compiler].flags.concat(
+				options[:cxxflags].map { |str| MakeRb::StaticFlag.new(str) })
+		end
+		if(options.include?(:ldflags))
+			mgr.settings.ld[mgr.pf_host.settings.def_linker].flags.concat(
+				options[:ldflags].map { |str| MakeRb::StaticFlag.new(str) })
+		end
+	end
 end

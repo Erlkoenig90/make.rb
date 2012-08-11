@@ -344,8 +344,7 @@ module MakeRb
 								puts procs[i].out
 								run = false
 								forcewait = true
-							end
-							if(procs[i].builder.rebuild?)
+							elsif(procs[i].builder.rebuild?)
 								puts procs[i].cmd.join(" ")
 								puts "The above build process suceeded, but target is still outdated; cancelling build"
 								run = false
