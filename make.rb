@@ -4,6 +4,7 @@ require 'pathname'
 require 'optparse'
 require 'settings.rb'
 require 'platform.rb'
+require 'trollop'
 
 # TODO: Keep-going
 
@@ -245,6 +246,7 @@ module MakeRb
 			@pf_build = nil
 			@pf_host = nil
 			@pf_target = nil
+			@debug = false
 		end
 		def build(targets)
 			procs = Array.new(@jobs) { |i| Job.new }
@@ -252,7 +254,7 @@ module MakeRb
 			
 			run = true
 			while(run)
-				puts "== ITERATION =="
+				if(@debug) then puts "== ITERATION ==" end
 				# Start new tasks
 				while(jcount < procs.length)
 					builder = nil
@@ -268,7 +270,7 @@ module MakeRb
 						end
 					}
 					if(builder == nil)
-						puts "Nothing to build found"
+						if(@debug) then puts "Nothing to build found" end
 						if(!locked)
 							run = false
 						else
@@ -307,11 +309,11 @@ module MakeRb
 					exit
 				end
 				
-				$stdout.write "==SELECT== "
+				if(@debug) then $stdout.write "==SELECT== " end
 				before = Time.now
 				IO.select(fds)
 				delay = Time.now - before
-				puts delay.to_s
+				if(@debug) then puts delay.to_s end
 				
 				forcewait = false
 				for i in 0...procs.length
@@ -343,7 +345,7 @@ module MakeRb
 		end
 		def find(target,depth=0)
 			indent = ("  "*depth)
-			puts indent + "find(" + target.name + ")"
+			if(@debug) then puts indent + "find(" + target.name + ")" end
 			if(target.is_a?(Generated))
 				if(target.builder.locked)
 #					puts indent + "locked"
@@ -412,81 +414,81 @@ module MakeRb
 			@pf_build = Platform.native.clone
 			@pf_host = Platform.native.clone
 			@pf_target = Platform.native.clone
-			optparse = OptionParser.new { |opts|
-				opts.banner = "Usage: #{$0} [options] [targets]"
-				@jobs = 1
-				opts.on('-j', '--jobs N', 'Run up to N jobs simultaneously, default 1') { |j|
-					@jobs = j.to_i
-				}
-				opts.on('-h', '--help', 'Display this help screen') {
-					puts opts
-					puts 'Possible compiler toolchains to specify:'
-					MakeRbCCxx.compilers.each { |key,val|
-						puts "\t" + key + "\t\t" + val[0];
-					}
-					
-					exit
-				}
-				opts.on('--build PLATFORM', 'Specify the platform we are compiling on.') { |p|
-					@pf_build = MakeRb.platforms[p]
-					if(@pf_build == nil)
-						raise "Platform `#{p}' not found."
-					end
-					@pf_build = @pf_build.clone
-				}
-				opts.on('--host PLATFORM', 'Specify the platform the compiled program will run on.') { |p|
-					@pf_host = MakeRb.platforms[p]
-					if(@pf_host == nil)
-						raise "Platform `#{p}' not found."
-					end
-					@pf_host = @pf_host.clone
-				}
-				opts.on('--target PLATFORM', 'Specify the platform the compiled program will produce code for; only useful for compilers.') { |p|
-					@pf_target = MakeRb.platforms[p]
-					if(@pf_target == nil)
-						raise "Platform `#{p}' not found."
-					end
-					@pf_target = @pf_target.clone
-				}
+			
+#				opts.banner = "Usage: #{$0} [options] [targets]"
+#					puts 'Possible compiler toolchains to specify:'
+#					MakeRbCCxx.compilers.each { |key,val|
+#						puts "\t" + key + "\t\t" + val[0];
+#					}
+			opts = Trollop::options {
+				opt :jobs, 'Number of jobs to run simultaneously', :short => '-j', :default => 1
+				opt "build", 'Specify the platform we are compiling on.', :default => 'native'
+				opt "host", 'Specify the platform the compiled program will run on.', :default => 'native'
+				opt "target", 'Specify the platform the compiled program will produce code for; only useful for compilers.', :default => 'native'
+				opt :make_debug, 'Show debug output of the build algorithm', :default => false
 				
 				['build','host','target'].each { |type|
-					opts.on("--#{type}-compiler CL", "Specify the compiler+linker toolchain to use for the `#{type}\' platform. See below for possible values") { |clname|
-						tc = MakeRbCCxx::compilers[clname]
-						if(tc == nil)
-							raise "`#{clname}' is not a valid compiler"
-						end
-						pf = instance_variable_get('@pf_' + type)
-						pf.settings.def_compiler = tc[1]					
-						pf.settings.def_linker = tc[2]
-					}
+					opt "#{type}-compiler", "Specify the compiler+linker toolchain to use for the `#{type}\' platform. See below for possible values", :type => :string
+					
 					['cc','cxx','ld'].each { |tool|
-						opts.on("--#{type}-#{tool}flags FLAGS", "Specify #{tool} flags for use on the `#{type}' platform.") { |flags|
-							# TODO: better parsing
-							flags = flags.split(" ").map { |str| MakeRb::StaticFlag.new(str) }
-							pf = instance_variable_get('@pf_' + type)
-							
-							klass = if(tool == 'ld') then pf.settings.def_linker else pf.settings.def_compiler end
-							pf.settings.method(tool).call()[klass].flags.concat (flags)
-						}
+						opt "#{type}-#{tool}flags", "Specify #{tool} flags for use on the `#{type}' platform.", :type => :string
 					}
+				}
+
+			}
+			
+			@jobs = opts[:jobs]
+			@debug = opts[:make_debug]
+			['build','host','target'].each { |type|
+				# Get the platform
+				p = opts[type]
+				pf = MakeRb.platforms[p]
+				if(pf == nil)
+					raise "Platform `#{p}' not found."
+				end
+				pf = pf.clone
+				instance_variable_set("@pf_#{type}", pf)
+				
+				# Set the compiler
+				clname = opts["#{type}-compiler"]
+				if(clname != nil)
+					tc = MakeRbCCxx::compilers[clname]
+					if(tc == nil)
+						raise "`#{clname}' is not a valid compiler"
+					end
+					pf.settings.def_compiler = tc[1]					
+					pf.settings.def_linker = tc[2]
+				end
+				
+				# Set the flags
+				['cc','cxx','ld'].each { |tool|
+					flags = opts["#{type}-#{tool}flags"]
+					if(flags != nil)
+						# TODO: better parsing
+						flags = flags.split(" ").map { |str| MakeRb::StaticFlag.new(str) }
+						
+						klass = if(tool == 'ld') then pf.settings.def_linker else pf.settings.def_compiler end
+						pf.settings.method(tool).call()[klass].flags.concat (flags)
+					end
 				}
 			}
 			
-			optparse.parse!
-			
-			@pf_build = @pf_build.clone
-			@pf_host = @pf_host.clone
-			@pf_target = @pf_target.clone
 			
 			block.call(self)
 			
-			targets = ARGV.map { |n|
-				i = @resources.index { |r| r.name == n }
-				if(i == nil)
-					raise "Target `#{n}' not found!"
-				end
-				@resources[i]
-			}
+			targets = if(ARGV.empty?)
+				puts "No targets specified; building everything"
+				@resources
+			else
+				ARGV.map { |n|
+					i = @resources.index { |r| r.name == n }
+					if(i == nil)
+						raise "Target `#{n}' not found!"
+					end
+					@resources[i]
+				}
+			end
+			puts "Building targets: " + targets.map {|t| t.name }.join(", ")
 			build(targets)
 		end
 		def BuildMgr.run(&block)
