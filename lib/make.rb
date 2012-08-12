@@ -468,11 +468,7 @@ module MakeRb
 			['build','host','target'].each { |type|
 				# Get the platform
 				p = opts[type]
-				pf = MakeRb.platforms[p]
-				if(pf == nil)
-					raise "Platform `#{p}' not found."
-				end
-				pf = pf.clone
+				pf = MakeRb::Platform.get(p)
 				instance_variable_set("@pf_#{type}", pf)
 				
 				# Set the compiler
@@ -497,7 +493,7 @@ module MakeRb
 						flags = flags.split(" ").map { |str| MakeRb::StaticFlag.new(str) }
 						
 						klass = if(tool == 'ld') then pf.settings.def_linker else pf.settings.def_compiler end
-						pf.settings.method(tool).call()[klass].flags.concat (flags)
+						pf.settings.method(tool).call().specific[klass].flags.concat (flags)
 					end
 				}
 			}

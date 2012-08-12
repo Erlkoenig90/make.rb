@@ -32,12 +32,15 @@ module MakeRbCCxx
 			
 			cxx = sources.inject(false) { |o,s| o || s.is_a?(CxxFile) }
 			tool = if(cxx) then "g++" else "gcc" end
-			p_flags = if(cxx) then platform.settings.cxx[self.class].flags else platform.settings.cc[self.class].flags end
-			b_flags = if(cxx) then buildMgr.settings.cxx[self.class].flags else buildMgr.settings.cc[self.class].flags end
+			p_flags = if(cxx) then platform.settings.cxx.specific[self.class].flags else platform.settings.cc.specific[self.class].flags end
+			b_flags = if(cxx) then buildMgr.settings.cxx.specific[self.class].flags else buildMgr.settings.cc.specific[self.class].flags end
 			d_flag = if(platform.settings.debug || buildMgr.settings.debug) then ["-g"] else [] end
 			
+			i_flags = (buildMgr.settings.cc.includes + (if(cxx) then buildMgr.settings.cxx.includes else [] end)).map { |i| "-I" + i.to_s }.uniq
+				
+			
 			targets[0].makePath
-			[platform.cl_prefix[self.class] + tool, "-c", "-o", targets[0].filename.to_s] + sources.map{|s| s.filename.to_s } + flags.get + p_flags.get + b_flags.get + d_flag
+			[platform.cl_prefix[self.class] + tool, "-c", "-o", targets[0].filename.to_s] + sources.map{|s| s.filename.to_s } + flags.get + p_flags.get + b_flags.get + d_flag + i_flags
 		end
 	end
 	class GCCLinker < MakeRbBinary::Linker
@@ -59,9 +62,11 @@ module MakeRbCCxx
 			
 				tool = if cxx then "g++" else "gcc" end
 				
-				p_flags = platform.settings.ld[self.class].flags
-				b_flags = buildMgr.settings.ld[self.class].flags
+				p_flags = platform.settings.ld.specific[self.class].flags
+				b_flags = buildMgr.settings.ld.specific[self.class].flags
 				d_flag = if(platform.settings.debug || buildMgr.settings.debug) then ["-g"] else [] end
+				
+				# TODO Library flags
 
 				[platform.cl_prefix[self.class] + tool] + if (targets[0].is_a?(MakeRbBinary::DynLibrary))
 					["-shared"]
@@ -94,21 +99,27 @@ module MakeRbCCxx
 			exeName)
 		
 		if(options.include?(:pkgconfig))
-			mgr.settings.cc[mgr.pf_host.settings.def_compiler].flags << MakeRb::PkgConfigCflags.new(options[:pkgconfig])
-			mgr.settings.cxx[mgr.pf_host.settings.def_compiler].flags << MakeRb::PkgConfigCflags.new(options[:pkgconfig])
-			mgr.settings.ld[mgr.pf_host.settings.def_linker].flags << MakeRb::PkgConfigLDflags.new(options[:pkgconfig])
+			mgr.settings.cc.specific[mgr.pf_host.settings.def_compiler].flags << MakeRb::PkgConfigCflags.new(options[:pkgconfig])
+			mgr.settings.cxx.specific[mgr.pf_host.settings.def_compiler].flags << MakeRb::PkgConfigCflags.new(options[:pkgconfig])
+			mgr.settings.ld.specific[mgr.pf_host.settings.def_linker].flags << MakeRb::PkgConfigLDflags.new(options[:pkgconfig])
 		end
 		if(options.include?(:ccflags))
-			mgr.settings.cc[mgr.pf_host.settings.def_compiler].flags.concat(
+			mgr.settings.cc.specific[mgr.pf_host.settings.def_compiler].flags.concat(
 				options[:ccflags].map { |str| MakeRb::StaticFlag.new(str) })
 		end
 		if(options.include?(:cxxflags))
-			mgr.settings.cxx[mgr.pf_host.settings.def_compiler].flags.concat(
+			mgr.settings.cxx.specific[mgr.pf_host.settings.def_compiler].flags.concat(
 				options[:cxxflags].map { |str| MakeRb::StaticFlag.new(str) })
 		end
 		if(options.include?(:ldflags))
-			mgr.settings.ld[mgr.pf_host.settings.def_linker].flags.concat(
+			mgr.settings.ld.specific[mgr.pf_host.settings.def_linker].flags.concat(
 				options[:ldflags].map { |str| MakeRb::StaticFlag.new(str) })
+		end
+		if(options.include?(:c_includes))
+			mgr.settings.cc.includes.concat(options[:c_includes])
+		end
+		if(options.include?(:cxx_includes))
+			mgr.settings.cxx.includes.concat(options[:cxx_includes])
 		end
 	end
 end
