@@ -6,7 +6,7 @@ Gem::Specification.new do |s|
   s.description = "make.rb is a cross-platform build system like make, where everything, is configured in ruby objects to gain more flexibility"
   s.authors     = ["Niklas Gürtler"]
   s.email       = 'profclonk@gmx.de'
-  s.files       = ["lib/make.rb", "lib/makerb_ccxx.rb", "lib/makerb_settings.rb", "lib/makerb_binary.rb", "lib/makerb_platform.rb"]
+  s.files       = ["lib/make.rb", "lib/makerb_binary.rb", "lib/makerb_buildmgr.rb", "lib/makerb_ccxx.rb", "lib/makerb_misc.rb", "lib/makerb_platform.rb", "lib/makerb_settings.rb"]
   s.add_runtime_dependency 'trollop', '>= 1.16.2'
   s.homepage	= "http://2g2s.de/make.rb"
 end

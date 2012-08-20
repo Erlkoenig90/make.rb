@@ -95,13 +95,18 @@ module MakeRbCCxx
 				b_flags = buildMgr.settings.ld.specific[MakeRbCCxx.tc_gcc].flags
 				d_flag = if(platform.settings.debug || buildMgr.settings.debug) then ["-g"] else [] end
 				
+				ldScript = MakeRb.findWhere(sources) { |s| s.is_a?(MakeRbBinary::LinkerScript) }
+				ldScript = if(ldScript == nil) then [] else ["-T", ldScript.filename.to_s] end
+				
 				# TODO Library flags
 
 				[platform.cl_prefix[MakeRbCCxx.tc_gcc] + tool] + if (targets[0].is_a?(MakeRbBinary::DynLibrary))
 					["-shared"]
 				else
 					[]
-				end + ["-o", targets[0].filename.to_s] + sources.map{|s| s.filename.to_s } + flags.get + p_flags.get + b_flags.get + d_flag
+				end + ["-o", targets[0].filename.to_s] +
+					sources.select{ |s| !s.is_a?(MakeRb::ImplicitSrc) && !s.is_a?(MakeRbBinary::LinkerScript) }.map{|s| s.filename.to_s } +
+						ldScript + flags.get + p_flags.get + b_flags.get + d_flag
 			end
 		end
 	end
@@ -182,6 +187,9 @@ module MakeRbCCxx
 		end
 		if(options.include?(:ownheaders))
 			mgr.resources.concat(options[:ownheaders].map{|f| Header.new(mgr, f) })
+		end
+		if(options.include?(:ldscript))
+			ld.sources << MakeRbBinary::LinkerScript.new(mgr, options[:ldscript])
 		end
 	end
 end

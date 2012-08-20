@@ -3,6 +3,7 @@
 module MakeRb
 	class DepMakeFile < FileRes
 		include Generated
+		include ImplicitSrc
 		def initialize2
 #			p filename
 			if(filename.file?)

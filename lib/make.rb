@@ -136,12 +136,17 @@ module MakeRb
 		
 		attr_reader :name, :filename
 		def initialize(mgr, fname)
-			if(!fname.is_a?(Pathname))
+			if(fname.is_a?(String))
 				@name = File.basename(fname)
+				@filename_str = fname
 				fname = Pathname.new(fname)
-			else
+			elsif(fname.is_a?(Pathname))
 				@name = fname.basename.to_s
+				@filename_str = fname.to_s
+			else
+				raise "Invalid argument for FileRes#initialize"
 			end
+			# @filename_str is only used to speed up "match"
 			if(is_a?(Generated))
 				fname = mgr.builddir + fname
 			end
@@ -172,15 +177,23 @@ module MakeRb
 			rescue
 			end
 		end
-		def match(m)
+		def match_soft(m)
+#			puts "match_soft: #{m} == #{@filename_str}"
+#			p @filename_str
+#			p m
+			m.is_a?(String) && (m == @filename_str || ("./" + m) == @filename_str || m == ("./" + @filename_str))
+		end
+		def match_hard(m)
 			if(m.is_a?(Pathname))
 				begin
+#					false
 					(filename.eql? m) || (filename.realdirpath == m.realdirpath)
 				rescue
 					false
 				end
 			else
-				match(Pathname.new(m))
+#				false
+				@filename_str == m || match_hard(Pathname.new(m))
 			end
 		end
 	end

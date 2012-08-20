@@ -317,9 +317,15 @@ module MakeRb
 			end
 		end
 		def [](crit)
-			i = @resources.index { |r| r.match(crit) }
+			i = @resources.index { |r| r.match_soft(crit) }
 			if i == nil
-				nil
+				return nil
+				i = @resources.index { |r| r.match_hard(crit) }
+				if(i == nil)
+					nil
+				else
+					@resources[i]
+				end
 			else
 				@resources[i]
 			end

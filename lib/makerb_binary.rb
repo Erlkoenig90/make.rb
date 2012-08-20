@@ -15,4 +15,6 @@ module MakeRbBinary
 	end
 	class Linker < MakeRb::Builder
 	end
+	class LinkerScript < MakeRb::FileRes
+	end
 end
