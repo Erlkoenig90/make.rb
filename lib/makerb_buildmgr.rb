@@ -6,11 +6,11 @@ module MakeRb
 		end
 		class Job
 			attr_accessor :pid, :pipe, :out, :builder, :cmd
-			def initialize(cmd_, pid_, pipe_, buider_)
+			def initialize(cmd_, pid_, pipe_, builder_)
 				@pid = pid_
 				@pipe = pipe_
 				@out = ""
-				@builder = buider_
+				@builder = builder_
 				@cmd = cmd_
 			end
 			def read(force = false)
@@ -239,7 +239,7 @@ module MakeRb
 			@debug = opts[:make_debug]
 			@keepgoing = opts[:keep_going]
 			settings.debug = opts[:debug]
-			@root = Pathname.new(".")
+			@root = Pathname.new(File.dirname($0))
 			@builddir = Pathname.new(opts[:builddir]) + (if settings.debug then "debug" else "release" end)
 			
 			['build','host','target'].each { |type|
@@ -329,6 +329,9 @@ module MakeRb
 			else
 				@resources[i]
 			end
+		end
+		def effective(p)
+			@root + p
 		end
 	end
 end

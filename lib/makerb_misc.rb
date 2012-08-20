@@ -6,12 +6,12 @@ module MakeRb
 		include ImplicitSrc
 		def initialize2
 #			p filename
-			if(filename.file?)
+			if(buildMgr.effective(filename).file?)
 				load
 			end
 		end
 		def load
-			lines = IO.readlines(buildMgr.root + filename)
+			lines = IO.readlines(buildMgr.effective(filename))
 			i = 0
 			while(i < lines.length)
 				while lines[i][-1] == "\r" || lines[i][-1] == "\n"

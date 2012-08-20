@@ -158,22 +158,22 @@ module MakeRb
 				raise other.name + " is not a FileRes"
 			end
 			own = begin
-				File.mtime(filename)
+				File.mtime(buildMgr.effective(filename))
 			rescue
 				Time.at(0)
 			end
-			res = File.mtime(other.filename) >= own
+			res = File.mtime(buildMgr.effective(other.filename)) >= own
 #			puts "rebuild #{other.filename.to_s} -> #{filename.to_s} => #{res}"
 #			if(res) then raise "test" end
 			res
 		end
 		def makePath
-			filename.dirname.mkpath
+			buildMgr.effective(filename).dirname.mkpath
 		end
 		def clean
 			puts "rm -f \"" + @filename.to_s + "\""
 			begin
-				@filename.unlink
+				buildMgr.effective(@filename).unlink
 			rescue
 			end
 		end
@@ -244,7 +244,7 @@ module MakeRb
 #				puts "spawning " + cmd.join(" ")
 				if(cmd != nil)
 					r, w = IO.pipe
-					pid = spawn(*cmd, :out=>w, :err=>w, r=>:close, :in=>MakeRb.nullFile)
+					pid = spawn(*cmd, :out=>w, :err=>w, r=>:close, :in=>MakeRb.nullFile, :chdir => buildMgr.root)
 					w.close
 					
 					[cmd, pid, r]
