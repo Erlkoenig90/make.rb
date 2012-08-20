@@ -48,7 +48,7 @@ module MakeRb
 					["-mthumb", "-mcpu=cortex-m4", "-mfpu=fpv4-sp-d16", "-mfloat-abi=hard", "-DSTM32F4XX", "-ffunction-sections", "-fdata-sections", "-nostdlib", "-fno-exceptions", "-fno-rtti"]))}),
 				LinkerSettings.new({MakeRbCCxx::GCCLinker => BuilderSettings.new(Flags.new (
 					["-mthumb", "-mcpu=cortex-m4", "-mfpu=fpv4-sp-d16", "-mfloat-abi=hard", "-static", "-Wl,-cref,-u,Reset_Handler", "-Wl,--gc-sections", "-Wl,--defsym=malloc_getpagesize_P=0x1000", "-nostdlib", "-ffunction-sections", "-fdata-sections"]))}),
-					MakeRbCCxx::GCC, MakeRbCCxx::GCCLinker))
+					MakeRbCCxx::tc_gcc))
 			}
 	end
 end

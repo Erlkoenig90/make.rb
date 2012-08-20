@@ -112,18 +112,17 @@ module MakeRb
 		end
 	end
 	class CommonSettings
-		attr_accessor :cc, :cxx, :ld, :def_compiler, :def_linker, :debug
-		def initialize(c=nil, cx=nil, l=nil, def_cmp=nil, def_ld=nil)
+		attr_accessor :cc, :cxx, :ld, :def_toolchain, :debug
+		def initialize(c=nil, cx=nil, l=nil, def_tc=nil)
 			@cc = if c == nil then CompilerSettings.new else c end
 			@cxx = if cx == nil then CompilerSettings.new else cx end
 			@ld = if l == nil then LinkerSettings.new else l end
 			
-			@def_compiler = if(def_cmp == nil) then MakeRbCCxx::GCC else def_cmp end
-			@def_linker = if(def_linker == nil) then MakeRbCCxx::GCCLinker else def_linker end
+			@def_toolchain = if(def_tc == nil) then MakeRbCCxx::toolchains["gcc"] else def_tc end
 			@debug = false
 		end
 		def clone
-			CommonSettings.new(cc.clone, cxx.clone, ld.clone, def_compiler, def_linker)
+			CommonSettings.new(cc.clone, cxx.clone, ld.clone, def_toolchain)
 		end
 	end
 end
