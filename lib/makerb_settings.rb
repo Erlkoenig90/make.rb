@@ -58,8 +58,12 @@ module MakeRb
 	end
 	class BuilderSettings
 		attr_reader :flags
-		def initialize(flags)
-			@flags = flags
+		def initialize(flags=nil)
+			@flags = if(flags == nil)
+				Flags.new()
+			else
+				flags
+			end
 		end
 		def clone
 			BuilderSettings.new(flags.clone)
@@ -76,10 +80,12 @@ module MakeRb
 					s
 				}
 			else
-				@specific.default_proc= proc do |hash,key|
-					s = BuilderSettings.new(Flags.new())
-					hash[key] = s
-					s
+				if(@specific.is_a?(Hash))
+					@specific.default_proc= proc do |hash,key|
+						s = BuilderSettings.new(Flags.new())
+						hash[key] = s
+						s
+					end
 				end
 			end
 		end
@@ -114,11 +120,11 @@ module MakeRb
 	class CommonSettings
 		attr_accessor :cc, :cxx, :ld, :def_toolchain, :debug
 		def initialize(c=nil, cx=nil, l=nil, def_tc=nil)
-			@cc = if c == nil then CompilerSettings.new else c end
-			@cxx = if cx == nil then CompilerSettings.new else cx end
-			@ld = if l == nil then LinkerSettings.new else l end
+			@cc = c || CompilerSettings.new
+			@cxx = cx || CompilerSettings.new
+			@ld = l || LinkerSettings.new
 			
-			@def_toolchain = if(def_tc == nil) then MakeRbCCxx::toolchains["gcc"] else def_tc end
+			@def_toolchain = def_tc || MakeRbCCxx::toolchains["gcc"]
 			@debug = false
 		end
 		def clone

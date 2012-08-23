@@ -162,7 +162,7 @@ module MakeRb
 			rescue
 				Time.at(0)
 			end
-			res = File.mtime(buildMgr.effective(other.filename)) >= own
+			res = File.mtime(other.buildMgr.effective(other.filename)) > own
 #			puts "rebuild #{other.filename.to_s} -> #{filename.to_s} => #{res}"
 #			if(res) then raise "test" end
 			res
@@ -198,8 +198,8 @@ module MakeRb
 		end
 	end
 	class Builder
-		attr_reader :sources, :targets, :platform, :buildMgr, :flags
-		def initialize(pf, mgr, fl, src,t)
+		attr_reader :sources, :targets, :platform, :buildMgr
+		def initialize(pf, mgr, src,t)
 			if(!src.is_a?(Array))
 				@sources = [src]
 			else
@@ -215,11 +215,6 @@ module MakeRb
 
 			@platform = pf
 			@buildMgr = mgr
-			if(fl == nil)
-				@flags = MakeRb::Flags.new()
-			else
-				@flags = fl
-			end
 			
 			mgr << self
 		end
@@ -244,7 +239,7 @@ module MakeRb
 #				puts "spawning " + cmd.join(" ")
 				if(cmd != nil)
 					r, w = IO.pipe
-					pid = spawn(*cmd, :out=>w, :err=>w, r=>:close, :in=>MakeRb.nullFile, :chdir => buildMgr.root)
+				  pid = spawn(*cmd, :out=>w, :err=>w, r=>:close, :in=>MakeRb.nullFile)
 					w.close
 					
 					[cmd, pid, r]

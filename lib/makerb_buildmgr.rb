@@ -120,7 +120,7 @@ module MakeRb
 							@exitcode = 1
 						elsif(proc.builder.rebuild?)
 							puts proc.cmd.join(" ")
-							puts "The above build process suceeded, but target is still outdated"
+							puts "The above build process suceeded, but target is still outdated/nonexistent"
 							if(!@keepgoing)
 								run = false
 								forcewait = true
@@ -268,7 +268,7 @@ module MakeRb
 						# TODO: better parsing
 						flags = flags.split(" ").map { |str| MakeRb::StaticFlag.new(str) }
 						
-						pf.settings.method(tool).call().specific[pf.settings.def_toolchain].flags.concat (flags)
+						pf.settings.method(tool).call().specific[pf.settings.def_toolchain].flags.concat(flags)
 					end
 				}
 			}

@@ -23,7 +23,15 @@ module MakeRbCCxx
 	module DepGen
 	end
 	class GCC < Compiler
-		attr_reader :platform, :buildMgr, :flags
+		attr_reader :settings
+		def initialize(*x, settings_)
+			@settings = if(settings_ == nil)
+				MakeRb::CompilerSettings.new(MakeRb::BuilderSettings.new())
+			else
+				settings_
+			end
+			super(*x)
+		end
 		def oTarget
 			@oTarget ||= MakeRb.findWhere(targets) { |t| t.is_a?(MakeRbBinary::ObjFile) }
 		end
@@ -47,18 +55,18 @@ module MakeRbCCxx
 			i_flags = (buildMgr.settings.cc.includes + (if(cxx) then buildMgr.settings.cxx.includes else [] end)).map { |i| "-I" + i.to_s }.uniq
 			
 			[platform.cl_prefix[self.class] + tool, "-c"] +
-				sources.select{ |s| !s.is_a?(MakeRb::ImplicitSrc) }.map{|s| s.filename.to_s } +
-					flags.get + p_flags.get + b_flags.get + d_flag + i_flags
+				sources.select{ |s| !s.is_a?(MakeRb::ImplicitSrc) }.map{|s| s.buildMgr.effective(s.filename).to_s } +
+					settings.specific.flags.get + p_flags.get + b_flags.get + d_flag + i_flags
 		end
 		def buildDo
 			targets.each { |t| t.makePath }
-			baseCmd + ["-o", oTarget.filename.to_s]
+			baseCmd + ["-o", oTarget.buildMgr.effective(oTarget.filename).to_s]
 		end
 	end
 	class GCCDepGen < GCC
 		include DepGen
 		attr_reader :ofile
-		def initialize(ofile, *x)
+		def initialize(*x, ofile)
 			@ofile = ofile
 			super(*x)
 		end
@@ -73,6 +81,15 @@ module MakeRbCCxx
 		end
 	end
 	class GCCLinker < MakeRbBinary::Linker
+		attr_reader :settings
+		def initialize(*x, settings_)
+			@settings = if(settings_ == nil)
+				MakeRb::LinkerSettings.new(MakeRb::BuilderSettings.new())
+			else
+				settings_
+			end
+			super(*x)
+		end
 		def buildDo
 			if(targets.size != 1 || (!targets[0].is_a?(MakeRbBinary::LinkedFile)))
 				raise "Invalid target specification"
@@ -96,7 +113,7 @@ module MakeRbCCxx
 				d_flag = if(platform.settings.debug || buildMgr.settings.debug) then ["-g"] else [] end
 				
 				ldScript = MakeRb.findWhere(sources) { |s| s.is_a?(MakeRbBinary::LinkerScript) }
-				ldScript = if(ldScript == nil) then [] else ["-T", ldScript.filename.to_s] end
+				ldScript = if(ldScript == nil) then [] else ["-T", ldScript.buildMgr.effective(ldScript.filename).to_s] end
 				
 				# TODO Library flags
 
@@ -104,35 +121,48 @@ module MakeRbCCxx
 					["-shared"]
 				else
 					[]
-				end + ["-o", targets[0].filename.to_s] +
-					sources.select{ |s| !s.is_a?(MakeRb::ImplicitSrc) && !s.is_a?(MakeRbBinary::LinkerScript) }.map{|s| s.filename.to_s } +
-						ldScript + flags.get + p_flags.get + b_flags.get + d_flag
+				end + ["-o", targets[0].buildMgr.effective(targets[0].filename).to_s] +
+					sources.select{ |s| !s.is_a?(MakeRb::ImplicitSrc) && !s.is_a?(MakeRbBinary::LinkerScript) }.map{|s| s.buildMgr.effective(s.filename).to_s } +
+						ldScript + settings.specific.flags.get + p_flags.get + b_flags.get + d_flag
 			end
 		end
 	end
 	class ClToolchain
-		attr_reader :compiler, :linker, :depgen, :name
-		def initialize(n, cl, ld, dg)
+		attr_reader :compiler, :assembler, :linker, :depgen, :name
+		def initialize(n, cl, as, ld, dg)
 			@name = n
 			@compiler = cl
+			@assembler = as
 			@linker = ld
 			@depgen = dg
 		end
 	end
 	def MakeRbCCxx.tc_gcc
-		@@tc_gcc ||= ClToolchain.new("GNU Compiler Collection", GCC, GCCLinker, GCCDepGen)
+		@@tc_gcc ||= ClToolchain.new("GNU Compiler Collection", GCC, GCC, GCCLinker, GCCDepGen)
 	end
 	def MakeRbCCxx.toolchains
 		@compilers ||= {"gcc" => MakeRbCCxx.tc_gcc}
 #						"cl" => ClToolchain.new("Microsoft C/C++ Compiler", nil, nil, nil)}
 	end
 	def MakeRbCCxx.autoProgram(mgr, exeName, sourceNames, options)
+		autoGeneric(mgr, exeName, MakeRbBinary::Executable, sourceNames, options)
+	end
+	def MakeRbCCxx.autoDynLib(mgr, exeName, sourceNames, options)
+		autoGeneric(mgr, exeName, MakeRbBinary::DynLibrary, sourceNames, options)
+	end
+	def MakeRbCCxx.autoStaticLib(mgr, exeName, sourceNames, options)
+		autoGeneric(mgr, exeName, MakeRbBinary::StaticLibrary, sourceNames, options)
+	end
+	def MakeRbCCxx.autoGeneric(mgr, exeName, exeClass, sourceNames, options)
 		cFiles = []
 		cxxFiles = []
+		asmFiles = []
 		sourceNames.each { |fn|
 			ext = File.extname(fn).downcase
 			if(ext == ".cpp" || ext == ".cxx" || ext == ".cc")
 				cxxFiles << fn
+			elsif(ext == ".s" || ext == ".asm")
+				asmFiles << fn
 			else
 				cFiles << fn
 			end
@@ -147,20 +177,25 @@ module MakeRbCCxx
 			s = CFile.new(mgr, f)
 			o = CObjFile.auto(s)
 			d = MakeRb::DepMakeFile.auto(s)
-			g = mgr.pf_host.settings.def_toolchain.depgen.new(o, mgr.pf_host, mgr, nil, s, d)
-			b = mgr.pf_host.settings.def_toolchain.compiler.new(mgr.pf_host, mgr, nil, [s, d], o)
+			g = mgr.pf_host.settings.def_toolchain.depgen.new(mgr.pf_host, mgr, s, d, nil, o)
+			b = mgr.pf_host.settings.def_toolchain.compiler.new(mgr.pf_host, mgr, [s, d], o, nil)
 			o
 		} + cxxFiles.map { |f|
 			s = CxxFile.new(mgr, f)
 			o = CxxObjFile.auto(s)
 			d = MakeRb::DepMakeFile.auto(s)
-			g = mgr.pf_host.settings.def_toolchain.depgen.new(o, mgr.pf_host, mgr, nil, s, d)
-			b = mgr.pf_host.settings.def_toolchain.compiler.new(mgr.pf_host, mgr, nil, [s, d], o)
+			g = mgr.pf_host.settings.def_toolchain.depgen.new(mgr.pf_host, mgr, s, d, nil, o)
+			b = mgr.pf_host.settings.def_toolchain.compiler.new(mgr.pf_host, mgr, [s, d], o, nil)
+			o
+		} + asmFiles.map { |f|
+			s = MakeRbBinary::AsmFile.new(mgr, f)
+			o = MakeRbBinary::ObjFile.auto(s)
+			b = mgr.pf_host.settings.def_toolchain.assembler.new(mgr.pf_host, mgr, s, o, nil)
 			o
 		}
 		
-		exe = MakeRbBinary::Executable.new(mgr, exeName)
-		ld = mgr.pf_host.settings.def_toolchain.linker.new(mgr.pf_host, mgr, nil, ofiles, exe)
+		exe = exeClass.new(mgr, exeName)
+		ld = mgr.pf_host.settings.def_toolchain.linker.new(mgr.pf_host, mgr, ofiles, exe, nil)
 		
 		if(options.include?(:pkgconfig))
 			mgr.settings.cc.specific[mgr.pf_host.settings.def_toolchain].flags << MakeRb::PkgConfigCflags.new(options[:pkgconfig])
@@ -191,5 +226,9 @@ module MakeRbCCxx
 		if(options.include?(:ldscript))
 			ld.sources << MakeRbBinary::LinkerScript.new(mgr, options[:ldscript])
 		end
+		if(options.include?(:libs))
+			ld.sources.concat(options[:libs])
+		end
+		exe
 	end
 end

@@ -42,12 +42,12 @@ module MakeRb
 		@platforms ||= {
 			"native" => Platform.native,
 			"stm32f4" => Platform.new("STM32F4", Hash.new(""), CommonSettings.new(
-				CompilerSettings.new({MakeRbCCxx::tc_gcc => BuilderSettings.new(Flags.new (
-					["-mthumb", "-mcpu=cortex-m4", "-mfpu=fpv4-sp-d16", "-mfloat-abi=hard", "-DSTM32F4XX", "-ffunction-sections", "-fdata-sections", "-nostdlib"]))}),
-				CompilerSettings.new({MakeRbCCxx::tc_gcc => BuilderSettings.new(Flags.new (
-					["-mthumb", "-mcpu=cortex-m4", "-mfpu=fpv4-sp-d16", "-mfloat-abi=hard", "-DSTM32F4XX", "-ffunction-sections", "-fdata-sections", "-nostdlib", "-fno-exceptions", "-fno-rtti"]))}),
-				LinkerSettings.new({MakeRbCCxx::tc_gcc => BuilderSettings.new(Flags.new (
-					["-mthumb", "-mcpu=cortex-m4", "-mfpu=fpv4-sp-d16", "-mfloat-abi=hard", "-static", "-Wl,-cref,-u,Reset_Handler", "-Wl,--gc-sections", "-Wl,--defsym=malloc_getpagesize_P=0x1000", "-nostdlib", "-ffunction-sections", "-fdata-sections"]))}),
+				CompilerSettings.new({MakeRbCCxx::tc_gcc => BuilderSettings.new(Flags.new(
+					["-mthumb", "-mcpu=cortex-m4", "-mfpu=fpv4-sp-d16", "-mfloat-abi=hard", "-DSTM32F4XX", "-DARM_MATH_CM4", "-D__FPU_PRESENT=1", "-ffunction-sections", "-fdata-sections", "-nostdlib"]))}),
+				CompilerSettings.new({MakeRbCCxx::tc_gcc => BuilderSettings.new(Flags.new(
+					["-mthumb", "-mcpu=cortex-m4", "-mfpu=fpv4-sp-d16", "-mfloat-abi=hard", "-DSTM32F4XX", "-DARM_MATH_CM4", "-D__FPU_PRESENT=1", "-ffunction-sections", "-fdata-sections", "-nostdlib", "-fno-exceptions", "-fno-rtti"]))}),
+				LinkerSettings.new({MakeRbCCxx::tc_gcc => BuilderSettings.new(Flags.new(
+					["-mthumb", "-mcpu=cortex-m4", "-mfpu=fpv4-sp-d16", "-mfloat-abi=hard", "-static", "-Wl,-cref,-u,Reset_Handler", "-Wl,--gc-sections", "-Wl,--defsym=malloc_getpagesize_P=0x1000", "-ffunction-sections", "-fdata-sections"]))}),
 					MakeRbCCxx::tc_gcc))
 			}
 	end
