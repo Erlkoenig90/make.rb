@@ -7,6 +7,7 @@ require 'rbconfig'
 
 require 'makerb_settings'
 require 'makerb_platform'
+require 'makerb_lc'
 
 module MakeRb
 	def MakeRb.isWindows

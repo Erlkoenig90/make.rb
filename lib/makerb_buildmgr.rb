@@ -32,7 +32,7 @@ module MakeRb
 			end
 		end
 		
-		attr_reader :jobs, :pf_build, :pf_host, :pf_target, :settings, :builders, :resources, :builddir, :root
+		attr_reader :jobs, :pf_build, :pf_host, :pf_target, :settings, :builders, :resources, :builddir, :root, :mlc
 		def initialize
 			@settings = CommonSettings.new	# Project specific settings
 			
@@ -44,6 +44,7 @@ module MakeRb
 			@debug = false
 			@keepgoing = false
 			@builddir = nil
+			@mlc = nil
 		end
 		def build(targets)
 			procs = []
@@ -273,6 +274,8 @@ module MakeRb
 				}
 			}
 			
+			@mlc = MakeRbLC::MLCManager.new
+			p @mlc["zlib"]
 			
 			block.call(self)
 			@resources.each { |r| r.initialize2 }
