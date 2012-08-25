@@ -4,8 +4,9 @@ require 'pathname'
 
 module MakeRbLC
 	class MLCManager
-		attr_reader :dirpaths
-		def initialize
+		attr_reader :dirpaths, :buildMgr
+		def initialize(mgr)
+			@buildMgr = mgr
 			@dirpaths ||= (ENV['MAKERB_LC_PATH'] || "").split(";").map{|p| Pathname.new(p) } +
 				[Pathname.new(Dir.home)+".mlc", if(MakeRb.isWindows)
 					Pathname.new(ENV['ProgramFiles'], "mlc")
@@ -29,21 +30,34 @@ module MakeRbLC
 					}
 				end
 			}
-			Package.new(name, files)
+			Package.new(name, self, files)
 		end
 		def [](str)
 			if(@packages.include?(str))
 				@packages[str]
 			else
-				p = load(str)
-				@packages[str] = p
-				p
+				pkg = load(str)
+				@packages[str] = pkg
+				pkg
 			end
 		end
 	end
-	class Package
-		attr_reader :classes
-		def initialize(name, files)
+	class PkgDesc
+		attr_reader :package
+		def initialize(pkg)
+			@package = pkg
+		end
+	end
+	class Package < MakeRb::Library
+		attr_reader :name, :mlcMgr, :classes, :instances, :settings # Hash: Platform => CommonSettings
+		def initialize(name, mgr, files)
+			@name = name
+			@mlcMgr = mgr
+			@settings = Hash.new { |hash, key|
+				s = CommonSettings.new(Flags.new())
+				hash[key] = s
+				s
+			}
 			@classes = files.map { |f|
 				require(f)
 				
@@ -54,6 +68,15 @@ module MakeRbLC
 					nil
 				end
 			}.select{ |k| k != nil }
+			@instances = @classes.map { |klass|
+				if(klass < PkgDesc)
+					puts "Loaded: " + klass.name
+					klass.new(self)
+				end
+			}
+		end
+		def buildMgr
+			@mlcMgr.buildMgr
 		end
 		def Package.getClassname(str)
 			a = str.gsub(/[_-].?/) { |s| s[1].upcase }.gsub(/\W/, "")

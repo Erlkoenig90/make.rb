@@ -48,11 +48,14 @@ module MakeRbCCxx
 			
 			cxx = sources.inject(false) { |o,s| o || s.is_a?(CxxFile) }
 			tool = if(cxx) then "g++" else "gcc" end
-			p_flags = if(cxx) then platform.settings.cxx.specific[MakeRbCCxx.tc_gcc].flags else platform.settings.cc.specific[MakeRbCCxx.tc_gcc].flags end
-			b_flags = if(cxx) then buildMgr.settings.cxx.specific[MakeRbCCxx.tc_gcc].flags else buildMgr.settings.cc.specific[MakeRbCCxx.tc_gcc].flags end
+			p_flags = platform.settings.clFor(cxx).specific[MakeRbCCxx.tc_gcc].flags
+			b_flags = buildMgr.settings.clFor(cxx).specific[MakeRbCCxx.tc_gcc].flags
 			d_flag = if(platform.settings.debug || buildMgr.settings.debug) then ["-g"] else [] end
 			
-			i_flags = (buildMgr.settings.cc.includes + (if(cxx) then buildMgr.settings.cxx.includes else [] end)).map { |i| "-I" + i.to_s }.uniq
+			i_flags = MakeRb.collectIDeps(buildMgr.settings.clFor(cxx).includes +
+				settings.includes + platform.settings.clFor(cxx).includes, cxx).map { |inc|
+					"-I" + (inc.path.realpath.to_s)
+			}
 			
 			[platform.cl_prefix[self.class] + tool, "-c"] +
 				sources.select{ |s| !s.is_a?(MakeRb::ImplicitSrc) }.map{|s| s.buildMgr.effective(s.filename).to_s } +
@@ -115,7 +118,17 @@ module MakeRbCCxx
 				ldScript = MakeRb.findWhere(sources) { |s| s.is_a?(MakeRbBinary::LinkerScript) }
 				ldScript = if(ldScript == nil) then [] else ["-T", ldScript.buildMgr.effective(ldScript.filename).to_s] end
 				
-				# TODO Library flags
+				l_flags = MakeRb.collectLDeps(buildMgr.settings.ld.libraries +
+					settings.libraries + platform.settings.ld.libraries, cxx).map { |lib|
+						if(lib.is_a?(MakeRb::SystemLibrary))
+							["-l" + lib.name]
+						elsif(lib.is_a?(MakeRb::LibraryFile))
+							[lib.realpath.to_s]
+						else
+							raise "Invalid library specification #{lib.class.name}"
+						end
+				}.flatten(1)
+
 
 				[platform.cl_prefix[MakeRbCCxx.tc_gcc] + tool] + if (targets[0].is_a?(MakeRbBinary::DynLibrary))
 					["-shared"]
@@ -123,7 +136,7 @@ module MakeRbCCxx
 					[]
 				end + ["-o", targets[0].buildMgr.effective(targets[0].filename).to_s] +
 					sources.select{ |s| !s.is_a?(MakeRb::ImplicitSrc) && !s.is_a?(MakeRbBinary::LinkerScript) }.map{|s| s.buildMgr.effective(s.filename).to_s } +
-						ldScript + settings.specific.flags.get + p_flags.get + b_flags.get + d_flag
+						ldScript + settings.specific.flags.get + p_flags.get + b_flags.get + d_flag + l_flags
 			end
 		end
 	end
@@ -215,10 +228,10 @@ module MakeRbCCxx
 				options[:ldflags].map { |str| MakeRb::StaticFlag.new(str) })
 		end
 		if(options.include?(:c_includes))
-			mgr.settings.cc.includes.concat(options[:c_includes])
+			mgr.settings.cc.includes.concat(options[:c_includes].map { |i| MakeRb::IncludeDir.new(i) })
 		end
 		if(options.include?(:cxx_includes))
-			mgr.settings.cxx.includes.concat(options[:cxx_includes])
+			mgr.settings.cxx.includes.concat(options[:cxx_includes].map { |i| MakeRb::IncludeDir.new(i) })
 		end
 		if(options.include?(:ownheaders))
 			mgr.resources.concat(options[:ownheaders].map{|f| Header.new(mgr, f) })

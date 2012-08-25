@@ -274,8 +274,8 @@ module MakeRb
 				}
 			}
 			
-			@mlc = MakeRbLC::MLCManager.new
-			p @mlc["zlib"]
+			@mlc = MakeRbLC::MLCManager.new(self)
+#			@mlc["zlib"]
 			
 			block.call(self)
 			@resources.each { |r| r.initialize2 }
