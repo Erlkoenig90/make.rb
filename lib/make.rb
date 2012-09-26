@@ -1,5 +1,35 @@
 #!/usr/bin/env ruby
 
+#	Copyright © 2012, Niklas Gürtler
+#	Redistribution and use in source and binary forms, with or without
+#	modification, are permitted provided that the following conditions are
+#	met:
+#	
+#	    (1) Redistributions of source code must retain the above copyright
+#	    notice, this list of conditions and the following disclaimer. 
+#	
+#	    (2) Redistributions in binary form must reproduce the above copyright
+#	    notice, this list of conditions and the following disclaimer in
+#	    the documentation and/or other materials provided with the
+#	    distribution.  
+#	    
+#	    (3) The name of the author may not be used to
+#	    endorse or promote products derived from this software without
+#	    specific prior written permission.
+#	
+#	THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+#	IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+#	WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+#	DISCLAIMED. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT,
+#	INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+#	(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+#	SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+#	HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
+#	STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING
+#	IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+#	POSSIBILITY OF SUCH DAMAGE.
+
+require 'rubygems'
 require 'pathname'
 require 'optparse'
 require 'trollop'
@@ -7,7 +37,7 @@ require 'rbconfig'
 
 require 'makerb_settings'
 require 'makerb_platform'
-require 'makerb_lc'
+require 'makerb_ext'
 
 module MakeRb
 	def MakeRb.isWindows
@@ -65,7 +95,10 @@ module MakeRb
 			ary[i]
 		end
 	end
-
+	def MakeRb.parseFlags(flagstring)
+		# TODO - better parsing here
+		flagstring.split(" ")
+	end
 	class Resource
 		attr_accessor :builder, :buildMgr
 		def initialize(mgr)
@@ -138,15 +171,14 @@ module MakeRb
 		attr_reader :name, :filename
 		def initialize(mgr, fname)
 			if(fname.is_a?(String))
-				@name = File.basename(fname)
 				@filename_str = fname
 				fname = Pathname.new(fname)
 			elsif(fname.is_a?(Pathname))
-				@name = fname.basename.to_s
 				@filename_str = fname.to_s
 			else
 				raise "Invalid argument for FileRes#initialize"
 			end
+			@name = fname.to_s
 			# @filename_str is only used to speed up "match"
 			if(is_a?(Generated))
 				fname = mgr.builddir + fname
@@ -199,8 +231,8 @@ module MakeRb
 		end
 	end
 	class Builder
-		attr_reader :sources, :targets, :platform, :buildMgr
-		def initialize(pf, mgr, src,t)
+		attr_reader :sources, :targets, :specialisations, :buildMgr
+		def initialize(mgr, spec, src,t)
 			if(!src.is_a?(Array))
 				@sources = [src]
 			else
@@ -214,7 +246,7 @@ module MakeRb
 			end
 			@targets.each { |t| t.builder=self }
 
-			@platform = pf
+			@specialisations = spec
 			@buildMgr = mgr
 			
 			mgr << self

@@ -1,4 +1,33 @@
-#!/usr/bin/ruby
+#!/usr/bin/env ruby
+
+#	Copyright © 2012, Niklas Gürtler
+#	Redistribution and use in source and binary forms, with or without
+#	modification, are permitted provided that the following conditions are
+#	met:
+#	
+#	    (1) Redistributions of source code must retain the above copyright
+#	    notice, this list of conditions and the following disclaimer. 
+#	
+#	    (2) Redistributions in binary form must reproduce the above copyright
+#	    notice, this list of conditions and the following disclaimer in
+#	    the documentation and/or other materials provided with the
+#	    distribution.  
+#	    
+#	    (3) The name of the author may not be used to
+#	    endorse or promote products derived from this software without
+#	    specific prior written permission.
+#	
+#	THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+#	IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+#	WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+#	DISCLAIMED. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT,
+#	INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+#	(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+#	SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+#	HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
+#	STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING
+#	IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+#	POSSIBILITY OF SUCH DAMAGE.
 
 module MakeRb
 	class BuildMgr
@@ -32,19 +61,17 @@ module MakeRb
 			end
 		end
 		
-		attr_reader :jobs, :pf_build, :pf_host, :pf_target, :settings, :builders, :resources, :builddir, :root, :mlc
+		attr_reader :jobs, :settings, :builders, :resources, :reshash, :builddir, :root, :mec, :typeKeys
 		def initialize
-			@settings = CommonSettings.new	# Project specific settings
-			
 			@builders = []
 			@resources = []
-			@pf_build = nil
-			@pf_host = nil
-			@pf_target = nil
+			@reshash = {}
+			@typeKeys = {:build => SettingsKey[], :host => SettingsKey[], :target => SettingsKey[]}
+			@settings = nil
 			@debug = false
 			@keepgoing = false
 			@builddir = nil
-			@mlc = nil
+			@mec = nil
 		end
 		def build(targets)
 			procs = []
@@ -205,15 +232,12 @@ module MakeRb
 			last
 		end
 		def run(&block)
-			@pf_build = Platform.native.clone
-			@pf_host = Platform.native.clone
-			@pf_target = Platform.native.clone
-			
 #				opts.banner = "Usage: #{$0} [options] [targets]"
 #					puts 'Possible compiler toolchains to specify:'
 #					MakeRbCCxx.compilers.each { |key,val|
 #						puts "\t" + key + "\t\t" + val[0];
 #					}
+			namespaceDoObfuscator = typeKeys
 			opts = Trollop::options {
 				opt :jobs, 'Number of jobs to run simultaneously, 0 for infinite', :short => '-j', :default => 1
 				opt "build", 'Specify the platform we are compiling on.', :default => 'native'
@@ -224,14 +248,8 @@ module MakeRb
 				opt :keep_going, 'Don\'t abort on error, but run as many tasks as possible', :default => false, :short => '-k'
 				opt :builddir, 'Store generated files in this directory', :default => 'build'
 				
-				['build','host','target'].each { |type|
-					opt "#{type}-compiler", "Specify the compiler+linker toolchain to use for the `#{type}\' platform. See below for possible values", :type => :string
-					
+				namespaceDoObfuscator.each { |type,key|
 					opt "#{type}-debug", "Enable debugging for the `#{type}\' platform.", :default => false
-					
-					['cc','cxx','ld'].each { |tool|
-						opt "#{type}-#{tool}flags", "Specify #{tool} flags for use on the `#{type}' platform.", :type => :string
-					}
 				}
 
 			}
@@ -239,45 +257,26 @@ module MakeRb
 			@jobs = opts[:jobs]
 			@debug = opts[:make_debug]
 			@keepgoing = opts[:keep_going]
-			settings.debug = opts[:debug]
 			@root = Pathname.new(File.dirname($0))
-			@builddir = Pathname.new(opts[:builddir]) + (if settings.debug then "debug" else "release" end)
+			@builddir = Pathname.new(opts[:builddir]) + (if opts[:debug] then "debug" else "release" end)
 			
-			['build','host','target'].each { |type|
+			typeKeys.each { |type, key|
 				# Get the platform
-				p = opts[type]
-				pf = MakeRb::Platform.get(p)
-				instance_variable_set("@pf_#{type}", pf)
+				p = opts[type.to_s]
+				key[:platform] = pf = MakeRb::Platform.get(p)
 				
-				# Set the toolchain
-				clname = opts["#{type}-compiler"]
-				if(clname != nil)
-					tc = MakeRbCCxx::toolchains[clname]
-					if(tc == nil)
-						raise "`#{clname}' is not a valid compiler"
-					end
-					pf.settings.def_toolchain = tc
-				end
+				# Use the default toolchain, which might come from the command line
+				key[:toolchain] = pf.defToolchain || raise("No toolchain for `#{type}' specified and no default toolchain defined")
 				
 				# Get debug flag
-				pf.settings.debug = opts["#{type}-debug"]
-				
-				# Set the flags
-				['cc','cxx','ld'].each { |tool|
-					flags = opts["#{type}-#{tool}flags"]
-					if(flags != nil)
-						# TODO: better parsing
-						flags = flags.split(" ").map { |str| MakeRb::StaticFlag.new(str) }
-						
-						pf.settings.method(tool).call().specific[pf.settings.def_toolchain].flags.concat(flags)
-					end
-				}
+				key[:debug] = opts[:debug] || opts["#{type}-debug"] || false
 			}
 			
-			@mlc = MakeRbLC::MLCManager.new(self)
+			@settings = SettingsMatrix.build # the global settings blob. this has to come *after* querying (and possibly building) the platform objects.
+			@mec = MakeRbExt::ExtManager.new(self)
 #			@mlc["zlib"]
 			
-			block.call(self)
+			block.call
 			@resources.each { |r| r.initialize2 }
 			
 			if (ARGV.size == 1 && ARGV[0] == "clean")
@@ -310,16 +309,26 @@ module MakeRb
 		end
 		def BuildMgr.run(&block)
 			mgr = BuildMgr.new
-			mgr.run(&block)
+			cv = MakeRbConv.new(mgr)
+			mgr.run {
+				cv.instance_eval(&block)
+			}
 		end
 		def <<(r)
 			if(r.is_a? Resource)
 				@resources << r
+				if(@reshash.include?(r.name))
+					raise("There's already a resource with name `#{r.name}'")
+				end
+				@reshash[r.name] = r
 			else
 				@builders << r
 			end
 		end
-		def [](crit)
+		def [](name)
+			@reshash[name]
+		end
+		def findRes(crit)
 			i = @resources.index { |r| r.match_soft(crit) }
 			if i == nil
 				return nil
@@ -334,7 +343,133 @@ module MakeRb
 			end
 		end
 		def effective(p)
-			@root + p
+			if(p.absolute?) then p else @root + p end
 		end
+	end
+end
+
+class MakeRbConv
+	class Rule
+		attr_reader :name, :src, :dest, :builder, :specialisations, :block, :settings
+		def initialize(name_, src_,dest_,builder_,spec,block_,settings_)
+			@name = name_
+			@src = src_
+			@dest = dest_
+			@builder = builder_
+			@specialisations = spec
+			@block = block_
+			@settings = settings_
+		end
+	end
+	attr_reader :buildMgr
+	def initialize(mgr)
+		@buildMgr = mgr
+		@rules = {}
+			
+		mgr.typeKeys.each { |type,key|
+			self.class.send(:define_method,type) {
+				key
+			}
+		}
+	end
+	def rule(name,src,dest,*rest,&block)
+		spec = MakeRb::SettingsKey[]
+		builder = nil
+		settings = MakeRb::Settings[]
+		
+		rest.each { |param|
+			if((param.is_a?(Class) && param < MakeRb::Builder) || param.is_a?(Symbol))
+				builder = param
+			elsif(param.is_a?(MakeRb::SettingsKey))
+				spec = spec + param
+			elsif(param.is_a?(MakeRb::Settings))
+				settings = settings + param
+			else
+				raise ""
+			end
+		}
+		if(builder.is_a?(Symbol))
+			if(!spec.include?(:toolchain))
+				raise("Builder is symbolic, but not toolchain specialisations provided. You have to e.g. supply `host' so the appropriate builder can be found.")
+			end
+			tc = spec[:toolchain]
+			if(!tc.respond_to?(builder) || (builder = tc.send(builder)) == nil)
+				raise("Toolchain doesn't provice a tool for `#{builder}'")
+			end
+		end
+		if (builder == nil && block == nil) then raise("No builder and no block specified!") end
+		
+		@rules[name] = Rule.new(name, src, dest, builder, spec, block, settings)
+	end
+	def dep(name, sparam, dparam = nil, options = {})
+		r = @rules[name] || raise("No rule `#{name}' defined!")
+		spec = r.specialisations
+		if(options.include?(:spec))
+			spec = spec + options[:spec]
+		end
+		
+		if(!sparam.is_a?(Array)) then sparam = [sparam] end
+		src = (0...sparam.length).map { |i|
+			if(i >= r.src.length || r.src[i] == nil)
+				res(sparam[i])
+			else
+				r.src[i].new(buildMgr, *sparam[i])
+			end
+		}
+		if(!dparam.is_a?(Array)) then dparam = [dparam] end
+		dest = (0...[r.dest.length, dparam.length].max).map { |i|
+			if(i >= r.dest.length || r.dest[i] == nil)
+				res(dparam[i])
+			elsif((dparam == nil || i >= dparam.length || dparam[i] == nil) && r.dest[i].respond_to?(:auto))
+				r.dest[i].auto(*src)
+			else
+				r.dest[i].new(buildMgr, *dparam[i])
+			end
+		}
+		if(r.builder != nil)
+			builders = [r.builder.new(buildMgr, spec, src, dest, *(options[:builder] || []))]
+			if(r.block != nil)
+				ret = r.block.call(src, dest, builder, *(options[:block] || []))
+				if(ret.is_a?(Builder))
+					builders << ret
+				elsif(ret.is_a?(Array))
+					builders.concat!(ret)
+				end
+			end
+		elsif(r.block != nil)
+			builders = r.block.call(src, dest, *(options[:builder] || []))
+		else
+			builders = []
+		end
+		settings = if(options.include?(:settings))
+			options[:settings] + r.settings
+		else
+			r.settings
+		end
+		if(builders != nil && settings != nil && !settings.empty?)
+			if(!builders.is_a?(Array)) then builders = [builders] end
+			builders.each { |builder|
+				@buildMgr.settings[MakeRb::SettingsKey[:builder => builder]]= settings
+			}
+		end
+	end
+	def ddep(name, *params)
+		params.each { |param|
+			dep(name, *param)
+		}
+	end
+	def libs(key, *blocks)
+		set = Set[]
+		blocks.each { |block| block.call(@buildMgr.settings, key, set) }
+		
+		key + SettingsKey[:libraries => set.to_a]
+	end
+	def loadExt(*names)
+		names.each { |name|
+			@buildMgr.mec.load(name)
+		}
+	end
+	def res(name)
+		buildMgr[name] || raise("No resource called `#{name}' found")
 	end
 end

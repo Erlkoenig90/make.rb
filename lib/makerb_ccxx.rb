@@ -1,5 +1,34 @@
 #!/usr/bin/env ruby
 
+#	Copyright © 2012, Niklas Gürtler
+#	Redistribution and use in source and binary forms, with or without
+#	modification, are permitted provided that the following conditions are
+#	met:
+#	
+#	    (1) Redistributions of source code must retain the above copyright
+#	    notice, this list of conditions and the following disclaimer. 
+#	
+#	    (2) Redistributions in binary form must reproduce the above copyright
+#	    notice, this list of conditions and the following disclaimer in
+#	    the documentation and/or other materials provided with the
+#	    distribution.  
+#	    
+#	    (3) The name of the author may not be used to
+#	    endorse or promote products derived from this software without
+#	    specific prior written permission.
+#	
+#	THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+#	IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+#	WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+#	DISCLAIMED. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT,
+#	INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+#	(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+#	SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+#	HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
+#	STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING
+#	IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+#	POSSIBILITY OF SUCH DAMAGE.
+
 module MakeRbCCxx
 	class CFile < MakeRb::FileRes
 	end
@@ -23,15 +52,6 @@ module MakeRbCCxx
 	module DepGen
 	end
 	class GCC < Compiler
-		attr_reader :settings
-		def initialize(*x, settings_)
-			@settings = if(settings_ == nil)
-				MakeRb::CompilerSettings.new(MakeRb::BuilderSettings.new())
-			else
-				settings_
-			end
-			super(*x)
-		end
 		def oTarget
 			@oTarget ||= MakeRb.findWhere(targets) { |t| t.is_a?(MakeRbBinary::ObjFile) }
 		end
@@ -48,18 +68,17 @@ module MakeRbCCxx
 			
 			cxx = sources.inject(false) { |o,s| o || s.is_a?(CxxFile) }
 			tool = if(cxx) then "g++" else "gcc" end
-			p_flags = platform.settings.clFor(cxx).specific[MakeRbCCxx.tc_gcc].flags
-			b_flags = buildMgr.settings.clFor(cxx).specific[MakeRbCCxx.tc_gcc].flags
-			d_flag = if(platform.settings.debug || buildMgr.settings.debug) then ["-g"] else [] end
+			lang = if(cxx) then MakeRbLang::Cxx else MakeRbLang::C end
 			
-			i_flags = MakeRb.collectIDeps(buildMgr.settings.clFor(cxx).includes +
-				settings.includes + platform.settings.clFor(cxx).includes, cxx).map { |inc|
-					"-I" + (inc.path.realpath.to_s)
-			}
+			s = buildMgr.settings.getSettings(
+				(MakeRb::SettingsKey[:language => lang, :builder => self, :toolchain => MakeRbCCxx.tc_gcc] + specialisations))
+			flags = s[:clFlags] || []
+			prefix = (s[:clPrefix]) || ("")
+			includes = (s[:includeDirs] || []).map{|inc| "-I" + buildMgr.effective(inc).to_s }
 			
-			[platform.cl_prefix[self.class] + tool, "-c"] +
+			[prefix + tool, "-c"] +
 				sources.select{ |s| !s.is_a?(MakeRb::ImplicitSrc) }.map{|s| s.buildMgr.effective(s.filename).to_s } +
-					settings.specific.flags.get + p_flags.get + b_flags.get + d_flag + i_flags
+					flags + includes
 		end
 		def buildDo
 			targets.each { |t| t.makePath }
@@ -84,15 +103,6 @@ module MakeRbCCxx
 		end
 	end
 	class GCCLinker < MakeRbBinary::Linker
-		attr_reader :settings
-		def initialize(*x, settings_)
-			@settings = if(settings_ == nil)
-				MakeRb::LinkerSettings.new(MakeRb::BuilderSettings.new())
-			else
-				settings_
-			end
-			super(*x)
-		end
 		def buildDo
 			if(targets.size != 1 || (!targets[0].is_a?(MakeRbBinary::LinkedFile)))
 				raise "Invalid target specification"
@@ -111,32 +121,26 @@ module MakeRbCCxx
 			
 				tool = if cxx then "g++" else "gcc" end
 				
-				p_flags = platform.settings.ld.specific[MakeRbCCxx.tc_gcc].flags
-				b_flags = buildMgr.settings.ld.specific[MakeRbCCxx.tc_gcc].flags
-				d_flag = if(platform.settings.debug || buildMgr.settings.debug) then ["-g"] else [] end
+				lang = if(cxx) then MakeRbLang::Cxx else MakeRbLang::C end
+				
+				s = buildMgr.settings.getSettings(
+					MakeRb::SettingsKey[:language => lang, :builder => self, :toolchain => MakeRbCCxx.tc_gcc] + specialisations)
+				
+						
+				
+				flags = (s[:ldFlags] || []) + (s[:libraryFiles] || []).map { |f| @buildMgr.effective(f).to_s }
+				prefix = s[:clPrefix] || ""
 				
 				ldScript = MakeRb.findWhere(sources) { |s| s.is_a?(MakeRbBinary::LinkerScript) }
 				ldScript = if(ldScript == nil) then [] else ["-T", ldScript.buildMgr.effective(ldScript.filename).to_s] end
 				
-				l_flags = MakeRb.collectLDeps(buildMgr.settings.ld.libraries +
-					settings.libraries + platform.settings.ld.libraries, cxx).map { |lib|
-						if(lib.is_a?(MakeRb::SystemLibrary))
-							["-l" + lib.name]
-						elsif(lib.is_a?(MakeRb::LibraryFile))
-							[lib.realpath.to_s]
-						else
-							raise "Invalid library specification #{lib.class.name}"
-						end
-				}.flatten(1)
-
-
-				[platform.cl_prefix[MakeRbCCxx.tc_gcc] + tool] + if (targets[0].is_a?(MakeRbBinary::DynLibrary))
+				[prefix + tool] + if (targets[0].is_a?(MakeRbBinary::DynLibrary))
 					["-shared"]
 				else
 					[]
 				end + ["-o", targets[0].buildMgr.effective(targets[0].filename).to_s] +
 					sources.select{ |s| !s.is_a?(MakeRb::ImplicitSrc) && !s.is_a?(MakeRbBinary::LinkerScript) }.map{|s| s.buildMgr.effective(s.filename).to_s } +
-						ldScript + settings.specific.flags.get + p_flags.get + b_flags.get + d_flag + l_flags
+						ldScript + flags
 			end
 		end
 	end
@@ -211,7 +215,7 @@ module MakeRbCCxx
 		ld = mgr.pf_host.settings.def_toolchain.linker.new(mgr.pf_host, mgr, ofiles, exe, nil)
 		
 		if(options.include?(:pkgconfig))
-			mgr.settings.cc.specific[mgr.pf_host.settings.def_toolchain].flags << MakeRb::PkgConfigCflags.new(options[:pkgconfig])
+#			mgr.settings.cc.includes <<  
 			mgr.settings.cxx.specific[mgr.pf_host.settings.def_toolchain].flags << MakeRb::PkgConfigCflags.new(options[:pkgconfig])
 			mgr.settings.ld.specific[mgr.pf_host.settings.def_toolchain].flags << MakeRb::PkgConfigLDflags.new(options[:pkgconfig])
 		end
@@ -239,9 +243,31 @@ module MakeRbCCxx
 		if(options.include?(:ldscript))
 			ld.sources << MakeRbBinary::LinkerScript.new(mgr, options[:ldscript])
 		end
-		if(options.include?(:libs))
-			ld.sources.concat(options[:libs])
+		if(options.include?(:mlc_libs))
+			ld.settings.libraries.concat(options[:mlc_libs].map { |l| mgr.mlc[l] })
+		end
+		if(options.include?(:sys_libs))
+			ld.settings.libraries.concat(options[:sys_libs].map { |l| MakeRb::SystemLibrary.new(l) })
 		end
 		exe
+	end
+end
+
+module MakeRbLang
+	module C
+	end
+	module Cxx
+		def Cxx.parentSettings
+			C
+		end
+	end
+	module Ruby
+	end
+	module Asm
+	end
+	def MakeRbLang.settings
+		MakeRb::SettingsMatrix.new(
+			{:toolchain => MakeRbCCxx.tc_gcc, :debug => true, :language => C} => { :clFlags => ["-g"] },
+		)
 	end
 end
