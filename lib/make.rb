@@ -114,6 +114,14 @@ module MakeRb
 		def match(m)
 			false
 		end
+		# Used when this resource is used as a builder's dest 
+		def destSpecialisations
+			SettingsKey[]
+		end
+		# Used when this resource is used as a builder's src
+		def srcSpecialisations
+			SettingsKey[]
+		end
 	end
 	module Usable
 		attr_reader :refcount

@@ -4,19 +4,19 @@
 #	Redistribution and use in source and binary forms, with or without
 #	modification, are permitted provided that the following conditions are
 #	met:
-#	
+#
 #	    (1) Redistributions of source code must retain the above copyright
-#	    notice, this list of conditions and the following disclaimer. 
-#	
+#	    notice, this list of conditions and the following disclaimer.
+#
 #	    (2) Redistributions in binary form must reproduce the above copyright
 #	    notice, this list of conditions and the following disclaimer in
 #	    the documentation and/or other materials provided with the
-#	    distribution.  
-#	    
+#	    distribution.
+#
 #	    (3) The name of the author may not be used to
 #	    endorse or promote products derived from this software without
 #	    specific prior written permission.
-#	
+#
 #	THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
 #	IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
 #	WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
@@ -33,6 +33,7 @@ module MakeRb
 	class BuildMgr
 		class LockedException < Exception
 		end
+
 		class Job
 			attr_accessor :pid, :pipe, :out, :builder, :cmd
 			def initialize(cmd_, pid_, pipe_, builder_)
@@ -42,6 +43,7 @@ module MakeRb
 				@builder = builder_
 				@cmd = cmd_
 			end
+
 			def read(force = false)
 				if(force)
 					@out << @pipe.read
@@ -56,12 +58,14 @@ module MakeRb
 					end while r > 0 && !(@pipe.eof?)
 				end
 			end
+
 			def eof?
 				@pipe.eof?
 			end
 		end
-		
+
 		attr_reader :jobs, :settings, :builders, :resources, :reshash, :builddir, :root, :mec, :typeKeys
+
 		def initialize
 			@builders = []
 			@resources = []
@@ -73,9 +77,10 @@ module MakeRb
 			@builddir = nil
 			@mec = nil
 		end
+
 		def build(targets)
 			procs = []
-			
+
 			run = true
 			while(run)
 				if(@debug) then puts "== ITERATION ==" end
@@ -106,12 +111,12 @@ module MakeRb
 						end
 					end
 				end
-				
+
 				if(procs.count == 0)
 					puts "Nothing to do anymore."
 					break
 				end
-				
+
 				# Wait for input
 				fds = procs.map { |j| j.pipe }
 
@@ -119,24 +124,24 @@ module MakeRb
 					puts "Error: fds.length = 0. jcount = " + jcount.to_s
 					exit
 				end
-				
+
 				if(@debug) then $stdout.write "==SELECT== " end
 				before = Time.now
 				IO.select(fds)
 				delay = Time.now - before
 				if(@debug) then puts delay.to_s end
-				
+
 				forcewait = false
 				procs.delete_if { |proc|
 					# Read input data
 					proc.read(forcewait)
-					
+
 					# Exited or force wait
 					if(forcewait || proc.eof?)
 						begin
 							Process.waitpid(proc.pid)
 						end while (!($?.exited?))
-						
+
 						if($?.exitstatus != 0)
 							puts "Command failed:"
 							puts proc.cmd.join(" ")
@@ -164,6 +169,7 @@ module MakeRb
 				}
 			end
 		end
+
 		def find(target,depth=0)
 			indent = ("  "*depth)
 			if(@debug) then puts indent + "find(" + target.name + ")" end
@@ -172,7 +178,7 @@ module MakeRb
 					throw "target #{target.name} doesn't have a builder"
 				end
 				if(target.builder.locked)
-#					puts indent + "locked"
+					#					puts indent + "locked"
 					raise LockedException.new
 				else
 					found = nil
@@ -183,7 +189,7 @@ module MakeRb
 						rescue LockedException
 							ex = $!
 						end
-						
+
 						if(found != nil)
 							break
 						end
@@ -202,11 +208,12 @@ module MakeRb
 				nil
 			end
 		end
-		
+
 		def newchain(pf,classes,args)
 			step = args.map {|n| classes[0].new(self, n) }
 			chain(pf,classes[1..-1],step)
 		end
+
 		def chain(pf,classes,step)
 			i = 0
 			while i+1 < classes.length
@@ -218,25 +225,27 @@ module MakeRb
 				for j in 0...step.length
 					classes[i].new(pf, self, nil, step[j], nextstep[j])
 				end
-				
+
 				step = nextstep
-				
+
 				i = i + 2
 			end
-			
+
 			step
 		end
+
 		def join(pf,bclass,eclass,step,*args)
 			last = eclass.new(self, *args)
 			builder = bclass.new(pf, self, nil, step, last)
 			last
 		end
+
 		def run(&block)
-#				opts.banner = "Usage: #{$0} [options] [targets]"
-#					puts 'Possible compiler toolchains to specify:'
-#					MakeRbCCxx.compilers.each { |key,val|
-#						puts "\t" + key + "\t\t" + val[0];
-#					}
+			#				opts.banner = "Usage: #{$0} [options] [targets]"
+			#					puts 'Possible compiler toolchains to specify:'
+			#					MakeRbCCxx.compilers.each { |key,val|
+			#						puts "\t" + key + "\t\t" + val[0];
+			#					}
 			namespaceDoObfuscator = typeKeys
 			opts = Trollop::options {
 				opt :jobs, 'Number of jobs to run simultaneously, 0 for infinite', :short => '-j', :default => 1
@@ -247,38 +256,38 @@ module MakeRb
 				opt :debug, 'Enable debugging on all platforms', :default => false
 				opt :keep_going, 'Don\'t abort on error, but run as many tasks as possible', :default => false, :short => '-k'
 				opt :builddir, 'Store generated files in this directory', :default => 'build'
-				
+
 				namespaceDoObfuscator.each { |type,key|
 					opt "#{type}-debug", "Enable debugging for the `#{type}\' platform.", :default => false
 				}
 
 			}
-			
+
 			@jobs = opts[:jobs]
 			@debug = opts[:make_debug]
 			@keepgoing = opts[:keep_going]
 			@root = Pathname.new(File.dirname($0))
 			@builddir = Pathname.new(opts[:builddir]) + (if opts[:debug] then "debug" else "release" end)
-			
+
 			typeKeys.each { |type, key|
 				# Get the platform
 				p = opts[type.to_s]
 				key[:platform] = pf = MakeRb::Platform.get(p)
-				
+
 				# Use the default toolchain, which might come from the command line
 				key[:toolchain] = pf.defToolchain || raise("No toolchain for `#{type}' specified and no default toolchain defined")
-				
+
 				# Get debug flag
 				key[:debug] = opts[:debug] || opts["#{type}-debug"] || false
 			}
-			
+
 			@settings = SettingsMatrix.build # the global settings blob. this has to come *after* querying (and possibly building) the platform objects.
 			@mec = MakeRbExt::ExtManager.new(self)
-#			@mlc["zlib"]
-			
+			#			@mlc["zlib"]
+
 			block.call
 			@resources.each { |r| r.initialize2 }
-			
+
 			if (ARGV.size == 1 && ARGV[0] == "clean")
 				@resources.each { |r|
 					if(r.is_a? Generated)
@@ -307,6 +316,7 @@ module MakeRb
 				@exitcode
 			end
 		end
+
 		def BuildMgr.run(&block)
 			mgr = BuildMgr.new
 			cv = MakeRbConv.new(mgr)
@@ -314,6 +324,7 @@ module MakeRb
 				cv.instance_eval(&block)
 			}
 		end
+
 		def <<(r)
 			if(r.is_a? Resource)
 				@resources << r
@@ -325,9 +336,11 @@ module MakeRb
 				@builders << r
 			end
 		end
+
 		def [](name)
 			@reshash[name]
 		end
+
 		def findRes(crit)
 			i = @resources.index { |r| r.match_soft(crit) }
 			if i == nil
@@ -342,6 +355,7 @@ module MakeRb
 				@resources[i]
 			end
 		end
+
 		def effective(p)
 			if(p.absolute?) then p else @root + p end
 		end
@@ -350,8 +364,8 @@ end
 
 class MakeRbConv
 	class Rule
-		attr_reader :name, :src, :dest, :builder, :specialisations, :block, :settings
-		def initialize(name_, src_,dest_,builder_,spec,block_,settings_)
+		attr_reader :name, :src, :dest, :builder, :specialisations, :block, :settings, :libs
+		def initialize(name_, src_,dest_,builder_,spec,block_,settings_,libs_)
 			@name = name_
 			@src = src_
 			@dest = dest_
@@ -359,24 +373,28 @@ class MakeRbConv
 			@specialisations = spec
 			@block = block_
 			@settings = settings_
+			@libs = libs_
 		end
 	end
 	attr_reader :buildMgr
+
 	def initialize(mgr)
 		@buildMgr = mgr
 		@rules = {}
-			
+
 		mgr.typeKeys.each { |type,key|
 			self.class.send(:define_method,type) {
 				key
 			}
 		}
 	end
+
 	def rule(name,src,dest,*rest,&block)
 		spec = MakeRb::SettingsKey[]
 		builder = nil
 		settings = MakeRb::Settings[]
-		
+		libs = []
+
 		rest.each { |param|
 			if((param.is_a?(Class) && param < MakeRb::Builder) || param.is_a?(Symbol))
 				builder = param
@@ -384,6 +402,8 @@ class MakeRbConv
 				spec = spec + param
 			elsif(param.is_a?(MakeRb::Settings))
 				settings = settings + param
+			elsif(param.is_a?(MakeRbExt::LibProxyProc))
+				libs << param
 			else
 				raise ""
 			end
@@ -398,16 +418,17 @@ class MakeRbConv
 			end
 		end
 		if (builder == nil && block == nil) then raise("No builder and no block specified!") end
-		
-		@rules[name] = Rule.new(name, src, dest, builder, spec, block, settings)
+
+		@rules[name] = Rule.new(name, src, dest, builder, spec, block, settings, libs)
 	end
+
 	def dep(name, sparam, dparam = nil, options = {})
 		r = @rules[name] || raise("No rule `#{name}' defined!")
 		spec = r.specialisations
 		if(options.include?(:spec))
 			spec = spec + options[:spec]
 		end
-		
+
 		if(!sparam.is_a?(Array)) then sparam = [sparam] end
 		src = (0...sparam.length).map { |i|
 			if(i >= r.src.length || r.src[i] == nil)
@@ -416,8 +437,8 @@ class MakeRbConv
 				r.src[i].new(buildMgr, *sparam[i])
 			end
 		}
-		if(!dparam.is_a?(Array)) then dparam = [dparam] end
-		dest = (0...[r.dest.length, dparam.length].max).map { |i|
+		if(!dparam.is_a?(Array) && dparam != nil) then dparam = [dparam] end
+		dest = (0...[r.dest.length, if dparam == nil then 0 else dparam.length end].max).map { |i|
 			if(i >= r.dest.length || r.dest[i] == nil)
 				res(dparam[i])
 			elsif((dparam == nil || i >= dparam.length || dparam[i] == nil) && r.dest[i].respond_to?(:auto))
@@ -426,6 +447,18 @@ class MakeRbConv
 				r.dest[i].new(buildMgr, *dparam[i])
 			end
 		}
+		spec = src.inject(spec) { |old,obj| old+obj.srcSpecialisations }
+		spec = dest.inject(spec) { |old,obj| old+obj.destSpecialisations }
+
+		libs = (options[:libs] || [])
+		if(!libs.is_a?(Array)) then libs = [libs] end
+		libs = r.libs + libs
+		set = Set[]
+		libs.each { |lib|
+			lib.call(@buildMgr.settings, spec, set)
+		}
+		spec[:libraries] = set.to_a
+
 		if(r.builder != nil)
 			builders = [r.builder.new(buildMgr, spec, src, dest, *(options[:builder] || []))]
 			if(r.block != nil)
@@ -453,22 +486,19 @@ class MakeRbConv
 			}
 		end
 	end
+
 	def ddep(name, *params)
 		params.each { |param|
 			dep(name, *param)
 		}
 	end
-	def libs(key, *blocks)
-		set = Set[]
-		blocks.each { |block| block.call(@buildMgr.settings, key, set) }
-		
-		key + SettingsKey[:libraries => set.to_a]
-	end
+
 	def loadExt(*names)
 		names.each { |name|
 			@buildMgr.mec.load(name)
 		}
 	end
+
 	def res(name)
 		buildMgr[name] || raise("No resource called `#{name}' found")
 	end

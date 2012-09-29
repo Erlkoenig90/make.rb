@@ -42,8 +42,14 @@ module MakeRbBinary
 		include MakeRb::Generated;
 	end
 	class DynLibrary < LinkedFile
+		def destSpecialisations
+			MakeRb::SettingsKey[:staticLinking => false] + super
+		end
 	end
 	class StaticLibrary < LinkedFile
+		def destSpecialisations
+			MakeRb::SettingsKey[:staticLinking => true] + super
+		end
 	end
 	class Executable < LinkedFile
 	end

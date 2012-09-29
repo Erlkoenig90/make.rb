@@ -82,16 +82,19 @@ module MakeRbExt
 	end
 	
 	class LibVersion
-		attr_reader :parentSettings, :version, :deps, :name
-		def initialize(ver, name_, parent = nil, deps_=nil)
+		attr_reader :parentSettings, :version, :deps, :name, :privateDeps
+		def initialize(ver, name_, parent = nil, deps_=nil, pdeps_ = nil)
 			@parentSettings = parent
 			@version = ver
 			@version.extend(Comparable)
 			@deps = deps_ || []
+			@privateDeps = pdeps_ || []
 			@name = name_
 			
 #			puts "Deps: " + deps.map{|l| l.name }.join(",")
 		end
+	end
+	class LibProxyProc < Proc
 	end
 	class Library
 		attr_reader :versions, :name
@@ -105,7 +108,7 @@ module MakeRbExt
 			}
 		end
 		def where(&block)
-			Proc.new { |matrix,key,set=nil|
+			LibProxyProc.new { |matrix,key,set=nil|
 				if(set == nil)
 					set = Set[]
 				end
@@ -120,6 +123,11 @@ module MakeRbExt
 					libver.deps.each { |dep|
 						dep.call(matrix,key,set)
 					}
+					if(key[:staticLinking] || false)
+						libver.privateDeps.each { |dep|
+							dep.call(matrix,key,set)
+						}
+					end
 				end
 				set
 			}
@@ -130,7 +138,7 @@ module MakeRbExt
 	end
 	
 	def MakeRbExt.libver(name, lib, options={})
-		inst = LibVersion.new(options[:version] || [], name.to_s, options[:parent], options[:deps] || [])
+		inst = LibVersion.new(options[:version] || [], name.to_s, options[:parent], options[:deps] || [], options[:pdeps] || [])
 		MakeRbExt.const_set(name, inst)
 		
 		lib.versions[inst.version] = inst
