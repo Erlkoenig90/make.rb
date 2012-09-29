@@ -46,6 +46,7 @@ def outpkg(pkg)
 
 		cflags = []
 		ldflags = []
+		ldflagsPrivate = []
 		deps = []
 		depsPrivate = []
 		vars = {}
@@ -56,6 +57,8 @@ def outpkg(pkg)
 					cflags = MakeRb.parseFlags(pkg_cconf(m[3], vars))
 				elsif(m = /^(Libs\:)(\s*)(.*)(\s*)$/.match(line))
 					ldflags = MakeRb.parseFlags(pkg_cconf(m[3], vars))
+				elsif(m = /^(Libs.private\:)(\s*)(.*)(\s*)$/.match(line))
+					ldflagsPrivate = MakeRb.parseFlags(pkg_cconf(m[3], vars))
 				elsif((m1 = /^(Requires\:)(\s*)(.*)(\s*)$/.match(line)) || (m2 = /^(Requires.private\:)(\s*)(.*)(\s*)$/.match(line)))
 					depsProxy = if(/^(Requires\:)(\s*)(.*)(\s*)$/.match(line))
 						m = m1
@@ -64,9 +67,9 @@ def outpkg(pkg)
 						m = m2
 						depsPrivate
 					end
-#					p m
+					#					p m
 					str = m[3].strip
-#					p str
+					#					p str
 					l = 0
 					mode = 0
 					words = []
@@ -102,7 +105,7 @@ def outpkg(pkg)
 					end
 					if(str.length > 0) then words << str[l..-1] end
 
-#					p words
+					#					p words
 					i = 0
 					while(i < words.length)
 						k = i
@@ -137,11 +140,35 @@ def outpkg(pkg)
 				false
 			end
 		}
+		libdirsP = libdirs.clone
+		libfilesP = []
+		ldflagsPrivate.delete_if { |flag|
+			if(flag[0..1] == "-L")
+				libdirsP << flag[2..-1]
+				true
+			elsif(flag[0..1] == "-l")
+				libfilesP << "lib" + flag[2..-1]
+				true
+			else
+				false
+			end
+		}
 
 		l_ext = [".so", ".a", ".o"]
 		libfiles.map! { |f|
 			file = nil
 			libdirs.each { |d|
+				if ((file = l_ext.index { |ext| File.exists?(d + "/" + f + ext) }) != nil)
+					file = d + "/" + f + l_ext[file]
+					break
+				end
+			}
+			"Pathname.new(\"" + (file|| raise("Couldn't find library file `#{f}'")) + "\")"
+		}
+		l_ext = [".a", ".o", ".so"]
+		libfilesP.map! { |f|
+			file = nil
+			libdirsP.each { |d|
 				if ((file = l_ext.index { |ext| File.exists?(d + "/" + f + ext) }) != nil)
 					file = d + "/" + f + l_ext[file]
 					break
@@ -168,11 +195,16 @@ def outpkg(pkg)
 		#		ldflags = MakeRb.parseFlags(`pkg-config --libs #{pkg}`).inspect
 
 		$settings = $settings + "\n" +																					# , :language => MakeRbLang::C
-		"\t\t\tsettings[SettingsKey[:libraries => #{libver}, :platform => MakeRb::Platform.native, :toolchain => MakeRbCCxx.tc_gcc, :language => MakeRbLang::C]] =
+		"\t\t\tkey = SettingsKey[:libraries => #{libver}, :platform => MakeRb::Platform.native, :toolchain => MakeRbCCxx.tc_gcc, :language => MakeRbLang::C]\n" +
+		"\t\t\tsettings[key] =
 	\t\t\tSettings[:support => true, :clFlags => #{cflags}, :ldFlags => #{ldflags}" +
 		if(!includes.empty?) then ", :includeDirs => MakeRb::UniqPathList[" + includes.join(",") + "]" else "" end +
-		if(!libfiles.empty?) then ", :libraryFiles => MakeRb::UniqPathList[" + libfiles.join(",") + "]" else "" end + "];\n"
-
+		if(!libfiles.empty?) then ", :libraryFiles => MakeRb::UniqPathList[" + libfiles.join(",") + "]" else "" end + "];\n" +
+		if(!libfilesP.empty? || !ldflagsPrivate.empty?)
+			"\t\t\tsettings[key + {:staticLinking => true}] = Settings[" +
+			(if(ldflagsPrivate.empty?) then [] else [":ldFlags => #{ldflagsPrivate}"] end +
+				if(libfilesP.empty?) then [] else [":libraryFiles => [" + libfilesP.join(",") + "]"] end).join(",") + "]\n"
+		else "" end
 	end
 end
 $pkgnames.each { |pkg|
