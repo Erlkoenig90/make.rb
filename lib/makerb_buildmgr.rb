@@ -106,8 +106,10 @@ module MakeRb
 						res = builder.build
 						if(res != nil)
 							proc = Job.new(res[0], res[1], res[2], builder)
-							puts proc.cmd.join(" ")
+#							puts MakeRb.buildCmd(proc.cmd)
 							procs << proc
+						else
+							builder.unlock
 						end
 					end
 				end
@@ -144,22 +146,25 @@ module MakeRb
 
 						if($?.exitstatus != 0)
 							puts "Command failed:"
-							puts proc.cmd.join(" ")
-							puts proc.out
+							puts MakeRb.buildCmd(proc.cmd)
+							$stdout.write MakeRb.ensureNewline(proc.out)
 							if(!@keepgoing)
 								run = false
 								forcewait = true
 							end
 							@exitcode = 1
 						elsif(proc.builder.rebuild?)
-							puts proc.cmd.join(" ")
-							puts "The above build process suceeded, but target is still outdated/nonexistent"
+							puts "This build process suceeded, but target is still outdated/nonexistent:"
+							puts MakeRb.buildCmd(proc.cmd)
+							$stdout.write MakeRb.ensureNewline(proc.out)
 							if(!@keepgoing)
 								run = false
 								forcewait = true
 							end
 							@exitcode = 1
 						else
+							puts MakeRb.buildCmd(proc.cmd)
+							$stdout.write MakeRb.ensureNewline(proc.out)
 							proc.builder.unlock
 						end
 						true
@@ -357,6 +362,7 @@ module MakeRb
 		end
 
 		def effective(p)
+			p = if(p.is_a?(Pathname)) then p else Pathname.new(p) end
 			if(p.absolute?) then p else @root + p end
 		end
 	end
@@ -394,7 +400,8 @@ class MakeRbConv
 		builder = nil
 		settings = MakeRb::Settings[]
 		libs = []
-
+		
+		i = 4
 		rest.each { |param|
 			if((param.is_a?(Class) && param < MakeRb::Builder) || param.is_a?(Symbol))
 				builder = param
@@ -405,8 +412,9 @@ class MakeRbConv
 			elsif(param.is_a?(MakeRbExt::LibProxyProc))
 				libs << param
 			else
-				raise ""
+				raise "rule: Don't know how to use parameter #{i} of type #{param.class}: " + param.inspect
 			end
+			i += 1
 		}
 		if(builder.is_a?(Symbol))
 			if(!spec.include?(:toolchain))
@@ -432,7 +440,7 @@ class MakeRbConv
 		if(!sparam.is_a?(Array)) then sparam = [sparam] end
 		src = (0...sparam.length).map { |i|
 			if(i >= r.src.length || r.src[i] == nil)
-				res(sparam[i])
+				if(sparam[i].is_a?(Resource)) then sparam[i] else res(sparam[i]) end
 			else
 				r.src[i].new(buildMgr, *sparam[i])
 			end
@@ -440,7 +448,7 @@ class MakeRbConv
 		if(!dparam.is_a?(Array) && dparam != nil) then dparam = [dparam] end
 		dest = (0...[r.dest.length, if dparam == nil then 0 else dparam.length end].max).map { |i|
 			if(i >= r.dest.length || r.dest[i] == nil)
-				res(dparam[i])
+				if(dparam[i].is_a?(Resource)) then dparam[i] else res(dparam[i]) end
 			elsif((dparam == nil || i >= dparam.length || dparam[i] == nil) && r.dest[i].respond_to?(:auto))
 				r.dest[i].auto(*src)
 			else
@@ -485,14 +493,15 @@ class MakeRbConv
 				@buildMgr.settings[MakeRb::SettingsKey[:builder => builder]]= settings
 			}
 		end
+		dest
 	end
 
 	def ddep(name, *params)
-		params.each { |param|
+		params.flat_map { |param|
 			dep(name, *param)
 		}
 	end
-
+	
 	def loadExt(*names)
 		names.each { |name|
 			@buildMgr.mec.load(name)

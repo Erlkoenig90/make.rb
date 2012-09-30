@@ -99,6 +99,13 @@ module MakeRb
 		# TODO - better parsing here
 		flagstring.split(" ")
 	end
+	def MakeRb.buildCmd(args)
+		# TODO - escaping here
+		args.join(" ")
+	end
+	def MakeRb.ensureNewline(str)
+		str.empty? ? "" : (str[-1] == "\n" ? str : str + "\n")
+	end
 	class Resource
 		attr_accessor :builder, :buildMgr
 		def initialize(mgr)
@@ -237,6 +244,12 @@ module MakeRb
 				@filename_str == m || match_hard(Pathname.new(m))
 			end
 		end
+		def effective
+			buildMgr.effective(filename)
+		end
+	end
+	class GeneratedFileRes < FileRes
+		include Generated
 	end
 	class Builder
 		attr_reader :sources, :targets, :specialisations, :buildMgr
@@ -280,7 +293,7 @@ module MakeRb
 #				puts "spawning " + cmd.join(" ")
 				if(cmd != nil)
 					r, w = IO.pipe
-				  pid = spawn(*cmd, :out=>w, :err=>w, r=>:close, :in=>MakeRb.nullFile)
+					pid = spawn(*cmd, :out=>w, :err=>w, r=>:close, :in=>MakeRb.nullFile)
 					w.close
 					
 					[cmd, pid, r]
@@ -304,6 +317,15 @@ module MakeRb
 		end
 		def unlock
 			targets.each { |t| t.unlock }
+		end
+	end
+	class InlineBuilder < Builder
+		def initialize(mgr, spec, src,t, block)
+			super(mgr,spec,src,t)
+			@buildBlock = block
+		end
+		def buildDo
+			@buildBlock.call(sources, targets, specialisations)
 		end
 	end
 end
