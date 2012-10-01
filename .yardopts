@@ -1,0 +1,1 @@
+--title make.rb --charset UTF-8 --tag comment --hide-tag comment lib/*.rb - general.md

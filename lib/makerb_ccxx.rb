@@ -1,34 +1,5 @@
 #!/usr/bin/env ruby
 
-#	Copyright © 2012, Niklas Gürtler
-#	Redistribution and use in source and binary forms, with or without
-#	modification, are permitted provided that the following conditions are
-#	met:
-#	
-#	    (1) Redistributions of source code must retain the above copyright
-#	    notice, this list of conditions and the following disclaimer. 
-#	
-#	    (2) Redistributions in binary form must reproduce the above copyright
-#	    notice, this list of conditions and the following disclaimer in
-#	    the documentation and/or other materials provided with the
-#	    distribution.  
-#	    
-#	    (3) The name of the author may not be used to
-#	    endorse or promote products derived from this software without
-#	    specific prior written permission.
-#	
-#	THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
-#	IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
-#	WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-#	DISCLAIMED. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT,
-#	INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-#	(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-#	SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
-#	HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
-#	STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING
-#	IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
-#	POSSIBILITY OF SUCH DAMAGE.
-
 module MakeRbCCxx
 	class CFile < MakeRb::FileRes
 	end
@@ -53,10 +24,10 @@ module MakeRbCCxx
 	end
 	class GCC < Compiler
 		def oTarget
-			@oTarget ||= MakeRb.findWhere(targets) { |t| t.is_a?(MakeRbBinary::ObjFile) }
+			@oTarget ||= targets.find { |t| t.is_a?(MakeRbBinary::ObjFile) }
 		end
 		def depTarget
-			@depTarget ||= MakeRb.findWhere(targets) { |t| t.is_a?(MakeRb::DepMakeFile) }
+			@depTarget ||= targets.find { |t| t.is_a?(MakeRb::DepMakeFile) }
 		end
 		
 		def baseCmd
@@ -131,7 +102,7 @@ module MakeRbCCxx
 				flags = (s[:ldFlags] || []) + (s[:libraryFiles] || []).map { |f| @buildMgr.effective(f).to_s }
 				prefix = s[:clPrefix] || ""
 				
-				ldScript = MakeRb.findWhere(sources) { |s| s.is_a?(MakeRbBinary::LinkerScript) }
+				ldScript = sources.find { |s| s.is_a?(MakeRbBinary::LinkerScript) }
 				ldScript = if(ldScript == nil) then [] else ["-T", ldScript.buildMgr.effective(ldScript.filename).to_s] end
 				
 				[prefix + tool] + if (targets[0].is_a?(MakeRbBinary::DynLibrary))

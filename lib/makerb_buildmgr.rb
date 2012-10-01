@@ -1,39 +1,13 @@
 #!/usr/bin/env ruby
 
-#	Copyright © 2012, Niklas Gürtler
-#	Redistribution and use in source and binary forms, with or without
-#	modification, are permitted provided that the following conditions are
-#	met:
-#
-#	    (1) Redistributions of source code must retain the above copyright
-#	    notice, this list of conditions and the following disclaimer.
-#
-#	    (2) Redistributions in binary form must reproduce the above copyright
-#	    notice, this list of conditions and the following disclaimer in
-#	    the documentation and/or other materials provided with the
-#	    distribution.
-#
-#	    (3) The name of the author may not be used to
-#	    endorse or promote products derived from this software without
-#	    specific prior written permission.
-#
-#	THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
-#	IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
-#	WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-#	DISCLAIMED. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT,
-#	INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-#	(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-#	SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
-#	HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
-#	STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING
-#	IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
-#	POSSIBILITY OF SUCH DAMAGE.
-
 module MakeRb
+	# The main object for building. It keeps the list of {Builder}s and {Resource}s, and has the algorithms
+	# to find out when to run which builder. Also reads the command line arguments. 
 	class BuildMgr
 		class LockedException < Exception
 		end
-
+		
+		# Represents a running builder
 		class Job
 			attr_accessor :pid, :pipe, :out, :builder, :cmd
 			def initialize(cmd_, pid_, pipe_, builder_)
@@ -77,7 +51,9 @@ module MakeRb
 			@builddir = nil
 			@mec = nil
 		end
-
+		
+		# Builds the given targets.
+		# @param [Array] targets 
 		def build(targets)
 			procs = []
 
@@ -174,7 +150,8 @@ module MakeRb
 				}
 			end
 		end
-
+		
+		# Finds a target to build next
 		def find(target,depth=0)
 			indent = ("  "*depth)
 			if(@debug) then puts indent + "find(" + target.name + ")" end
@@ -214,37 +191,9 @@ module MakeRb
 			end
 		end
 
-		def newchain(pf,classes,args)
-			step = args.map {|n| classes[0].new(self, n) }
-			chain(pf,classes[1..-1],step)
-		end
-
-		def chain(pf,classes,step)
-			i = 0
-			while i+1 < classes.length
-				nextstep = step.map { |s|
-					r = classes[i+1].auto(s)
-					r
-				}
-				builders = Array.new(step.length)
-				for j in 0...step.length
-					classes[i].new(pf, self, nil, step[j], nextstep[j])
-				end
-
-				step = nextstep
-
-				i = i + 2
-			end
-
-			step
-		end
-
-		def join(pf,bclass,eclass,step,*args)
-			last = eclass.new(self, *args)
-			builder = bclass.new(pf, self, nil, step, last)
-			last
-		end
-
+		# To be called by the script. Parses the command line arguments, sets up the build environment, calls the
+		# block and starts the build process.
+		# @param [Proc] block The block should define the {Builder}s and {Resource}s for the program.
 		def run(&block)
 			#				opts.banner = "Usage: #{$0} [options] [targets]"
 			#					puts 'Possible compiler toolchains to specify:'
@@ -322,6 +271,10 @@ module MakeRb
 			end
 		end
 
+		# For using the convenience API (see {MakeRbConv}). Similar to {#run}, but the block will be executed
+		# in the context of a {MakeRbConv} instance for using the {MakeRbConv#rule rule}, {MakeRbConv#dep dep}
+		# etc. methods.
+		# @param [Proc] block The block should define the {Builder}s and {Resource}s for the program using {MakeRbConv}'s methods
 		def BuildMgr.run(&block)
 			mgr = BuildMgr.new
 			cv = MakeRbConv.new(mgr)
@@ -329,7 +282,8 @@ module MakeRb
 				cv.instance_eval(&block)
 			}
 		end
-
+		# Adds the given object to the {BuildMgr}'s knowledge, to make them available for building.
+		# @param [Resource, Builder] r
 		def <<(r)
 			if(r.is_a? Resource)
 				@resources << r
@@ -341,16 +295,17 @@ module MakeRb
 				@builders << r
 			end
 		end
-
+		# Find {Resource}'s by their {Resource#name name}.
+		# @return [Resource, nil]
 		def [](name)
 			@reshash[name]
 		end
-
+		# Find {Resource}'s using their {Resource#match match} and {Resource#matchSoft matchSoft} methods.
+		# @return [Resource, nil]
 		def findRes(crit)
-			i = @resources.index { |r| r.match_soft(crit) }
+			i = @resources.index { |r| r.matchSoft(crit) }
 			if i == nil
-				return nil
-				i = @resources.index { |r| r.match_hard(crit) }
+				i = @resources.index { |r| r.match(crit) }
 				if(i == nil)
 					nil
 				else
@@ -360,7 +315,8 @@ module MakeRb
 				@resources[i]
 			end
 		end
-
+		# Calculates the real path of a file in the filesystem, possibly relative to the current working directory.
+		# Currently prepends the current build dir to the path.
 		def effective(p)
 			p = if(p.is_a?(Pathname)) then p else Pathname.new(p) end
 			if(p.absolute?) then p else @root + p end
@@ -368,7 +324,9 @@ module MakeRb
 	end
 end
 
+# The convenience API for {MakeRb::BuildMgr}.
 class MakeRbConv
+	# A rule defined by {#rule rule}
 	class Rule
 		attr_reader :name, :src, :dest, :builder, :specialisations, :block, :settings, :libs
 		def initialize(name_, src_,dest_,builder_,spec,block_,settings_,libs_)
@@ -394,7 +352,26 @@ class MakeRbConv
 			}
 		}
 	end
-
+	
+	# Defines a rule for processing targets, whose exact files are to be defined via {#dep dep}.
+	# @param [String] name The new rule's name.
+	# @param [Array] src An array of classes (ruby Class objects) derived from {MakeRb::Resource}. Instances of these
+	#   classes will be created using the parameters given to {#dep dep} and will be used as sources to the defined
+	#   builder. Can be left empty when specifying explicit {MakeRb::Resource}'s to {#dep dep}
+	# @param [Array] dest An array of classed (ruby Class objects) derived from {MakeRb::Resource}. Instances of these
+	#   classes will be created using the parameters given to {#dep dep} and will be used as targets to the defined
+	#   builder.
+	# @param [Array] rest Array of unordered additional data. Can contain:
+	#   * Zero or one of
+	#     * a class derived from {MakeRb::Builder} to specify which type of builder to use
+	#     * a ruby keyword. It will be sent(ruby send method) to the current {MakeRbCCxx::ClToolchain toolchain} instance
+	#       to get the builder to use, e.g. :compiler or :linker.
+	#   * {MakeRb::Settings} instances, to specify extra settings to apply to the generated {MakeRb::Builder}
+	#   * {MakeRb::SettingsKey} instances, to specialize what settings will be used for the generated {MakeRb::Builder}s.
+	#   * {MakeRbExt::LibProxyProc} instances (results of the {MakeRbExt::Library#where} method), to specify the libraries to be used
+	# @param [Proc] block If given, the block will be called upon invocation of {#dep dep} and can return an Array of {MakeRb::Builder}'s,
+	#   instead of using a builder class or keyword in the rest parameter.
+	# @return [Rule]
 	def rule(name,src,dest,*rest,&block)
 		spec = MakeRb::SettingsKey[]
 		builder = nil
@@ -429,7 +406,25 @@ class MakeRbConv
 
 		@rules[name] = Rule.new(name, src, dest, builder, spec, block, settings, libs)
 	end
-
+	# Uses the given parameters to create {MakeRb::Resource resource}s and {MakeRb::Builder builder}s of the classes
+	# specified via the given rule, connects them appropriately and feeds them to the {MakeRb::BuildMgr}.
+	# @param [String] name the name of the rule to be used
+	# @param [Array] sparam an array of arrays of arguments to pass to the constructors of the {MakeRb::Resource resource}s
+	#   used as soucres to the builder. If the constructors take only one argument, sparam can also be an Array of the arguments.
+	#   If there is only one source whose constructor takes only one argument, sparam can be this only argument.
+	#   If no {MakeRb::Resource Resource} classs have been specified via the {#rule rule} method, sparam can also
+	#   contain names of resources to be used, or actual {MakeRb::Resource Resource} objects (the target resources
+	#   are returned by this method)
+	# @param [Array] dparam Like sparam, just for the targets of the builers. This array can also be empty or left out,
+	#   in this case the respective 'auto' class method of the {MakeRb::Resource} class will be used.
+	# @param [hash] options Various options. Possible key-value pairs:
+	#   * :libs => an Array of {MakeRbExt::LibProxyProc} instances (results of the {MakeRbExt::Library#where} method), to specify the libraries to be used
+	#   * :builder => an Array of additional arguments passed to the {MakeRb::Builder}'s constructor.
+	#   * :spec => Additional specialisations to be used for the created {MakeRb::Builder}.
+	#   * :settings => Additional settings to attach to the created builder. 
+	#   * :block => If the rule has both a block and a {MakeRb::Builder} class specified, the array passed via :block
+	#     will be passed to the rule's block as additional parameters.
+	# @return [Array] the array of generated targets, can be used for the sparam parameter of subsequent {#dep dep} calls.
 	def dep(name, sparam, dparam = nil, options = {})
 		r = @rules[name] || raise("No rule `#{name}' defined!")
 		spec = r.specialisations
@@ -495,19 +490,21 @@ class MakeRbConv
 		end
 		dest
 	end
-
+	# Calls {#dep dep} on each element in the given array, using the given rule name.
+	# @param [Array] params An array of arrays, each being passed to one call of {#dep dep}.
+	# @return [Array] all the targets generated by {#dep dep}.
 	def ddep(name, *params)
 		params.flat_map { |param|
 			dep(name, *param)
 		}
 	end
-	
+	# Loads all MEC files whose names start with any of the names passed as parameters.
 	def loadExt(*names)
 		names.each { |name|
 			@buildMgr.mec.load(name)
 		}
 	end
-
+	# Finds a {MakeRb::Resource Resource} by its name.
 	def res(name)
 		buildMgr[name] || raise("No resource called `#{name}' found")
 	end
