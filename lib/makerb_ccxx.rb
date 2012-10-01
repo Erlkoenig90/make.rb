@@ -1,27 +1,34 @@
 #!/usr/bin/env ruby
 
 module MakeRbCCxx
+	# A C source file
 	class CFile < MakeRb::FileRes
 	end
+	# A C++ source file
 	class CxxFile < MakeRb::FileRes
 	end
+	# An object file, result of compiling a C file
 	class CObjFile < MakeRbBinary::ObjFile
 		def CObjFile.auto(src)
 			CObjFile.new(src.buildMgr, src.filename.sub_ext(".o"))
 		end
 	end
+	# An object file, result of compiling a C++ file. Use this to indicate that C++ options should be used for linking.
 	class CxxObjFile < MakeRbBinary::ObjFile
 		def CxxObjFile.auto(src)
 			CxxObjFile.new(src.buildMgr, src.filename.sub_ext(".o"))
 		end
 	end
+	# A header file - used for dependency tracking
 	class Header < MakeRb::FileRes
 		include MakeRb::ImplicitSrc
 	end
+	# A generic C/C++ compiler. Derived classes should implement concrete compilers
 	class Compiler < MakeRb::Builder
 	end
 	module DepGen
 	end
+	# The C/C++ Compiler from the GNU Compiler Collection
 	class GCC < Compiler
 		def oTarget
 			@oTarget ||= targets.find { |t| t.is_a?(MakeRbBinary::ObjFile) }
@@ -73,6 +80,7 @@ module MakeRbCCxx
 			end
 		end
 	end
+	# Uses the GCC frontend for linking
 	class GCCLinker < MakeRbBinary::Linker
 		def buildDo
 			if(targets.size != 1 || (!targets[0].is_a?(MakeRbBinary::LinkedFile)))
@@ -115,6 +123,7 @@ module MakeRbCCxx
 			end
 		end
 	end
+	# Represents a toolchain - i.e. compiler, assembler, linker
 	class ClToolchain
 		attr_reader :compiler, :assembler, :linker, :depgen, :name
 		def initialize(n, cl, as, ld, dg)
@@ -125,108 +134,24 @@ module MakeRbCCxx
 			@depgen = dg
 		end
 	end
+	# The GCC toolchain
+	# @return [ClToolchain]
 	def MakeRbCCxx.tc_gcc
 		@@tc_gcc ||= ClToolchain.new("GNU Compiler Collection", GCC, GCC, GCCLinker, GCCDepGen)
 	end
+	# Hash of toolchains
+	# @return [Hash]
 	def MakeRbCCxx.toolchains
 		@compilers ||= {"gcc" => MakeRbCCxx.tc_gcc}
 #						"cl" => ClToolchain.new("Microsoft C/C++ Compiler", nil, nil, nil)}
 	end
-	def MakeRbCCxx.autoProgram(mgr, exeName, sourceNames, options)
-		autoGeneric(mgr, exeName, MakeRbBinary::Executable, sourceNames, options)
-	end
-	def MakeRbCCxx.autoDynLib(mgr, exeName, sourceNames, options)
-		autoGeneric(mgr, exeName, MakeRbBinary::DynLibrary, sourceNames, options)
-	end
-	def MakeRbCCxx.autoStaticLib(mgr, exeName, sourceNames, options)
-		autoGeneric(mgr, exeName, MakeRbBinary::StaticLibrary, sourceNames, options)
-	end
-	def MakeRbCCxx.autoGeneric(mgr, exeName, exeClass, sourceNames, options)
-		cFiles = []
-		cxxFiles = []
-		asmFiles = []
-		sourceNames.each { |fn|
-			ext = File.extname(fn).downcase
-			if(ext == ".cpp" || ext == ".cxx" || ext == ".cc")
-				cxxFiles << fn
-			elsif(ext == ".s" || ext == ".asm")
-				asmFiles << fn
-			else
-				cFiles << fn
-			end
-		}
-		
-#		mgr.join(mgr.pf_host, mgr.pf_host.settings.def_toolchain.linker, MakeRbBinary::Executable, (
-#			mgr.newchain(mgr.pf_host, [CxxFile, mgr.pf_host.settings.def_toolchain.compiler, CxxObjFile], cxxFiles) +
-#			mgr.newchain(mgr.pf_host, [CFile, mgr.pf_host.settings.def_toolchain.compiler, CObjFile], cFiles)),
-#			exeName)
-		
-		ofiles = cFiles.map { |f|
-			s = CFile.new(mgr, f)
-			o = CObjFile.auto(s)
-			d = MakeRb::DepMakeFile.auto(s)
-			g = mgr.pf_host.settings.def_toolchain.depgen.new(mgr.pf_host, mgr, s, d, nil, o)
-			b = mgr.pf_host.settings.def_toolchain.compiler.new(mgr.pf_host, mgr, [s, d], o, nil)
-			o
-		} + cxxFiles.map { |f|
-			s = CxxFile.new(mgr, f)
-			o = CxxObjFile.auto(s)
-			d = MakeRb::DepMakeFile.auto(s)
-			g = mgr.pf_host.settings.def_toolchain.depgen.new(mgr.pf_host, mgr, s, d, nil, o)
-			b = mgr.pf_host.settings.def_toolchain.compiler.new(mgr.pf_host, mgr, [s, d], o, nil)
-			o
-		} + asmFiles.map { |f|
-			s = MakeRbBinary::AsmFile.new(mgr, f)
-			o = MakeRbBinary::ObjFile.auto(s)
-			b = mgr.pf_host.settings.def_toolchain.assembler.new(mgr.pf_host, mgr, s, o, nil)
-			o
-		}
-		
-		exe = exeClass.new(mgr, exeName)
-		ld = mgr.pf_host.settings.def_toolchain.linker.new(mgr.pf_host, mgr, ofiles, exe, nil)
-		
-		if(options.include?(:pkgconfig))
-#			mgr.settings.cc.includes <<  
-			mgr.settings.cxx.specific[mgr.pf_host.settings.def_toolchain].flags << MakeRb::PkgConfigCflags.new(options[:pkgconfig])
-			mgr.settings.ld.specific[mgr.pf_host.settings.def_toolchain].flags << MakeRb::PkgConfigLDflags.new(options[:pkgconfig])
-		end
-		if(options.include?(:ccflags))
-			mgr.settings.cc.specific[mgr.pf_host.settings.def_toolchain].flags.concat(
-				options[:ccflags].map { |str| MakeRb::StaticFlag.new(str) })
-		end
-		if(options.include?(:cxxflags))
-			mgr.settings.cxx.specific[mgr.pf_host.settings.def_toolchain].flags.concat(
-				options[:cxxflags].map { |str| MakeRb::StaticFlag.new(str) })
-		end
-		if(options.include?(:ldflags))
-			mgr.settings.ld.specific[mgr.pf_host.settings.def_toolchain].flags.concat(
-				options[:ldflags].map { |str| MakeRb::StaticFlag.new(str) })
-		end
-		if(options.include?(:c_includes))
-			mgr.settings.cc.includes.concat(options[:c_includes].map { |i| MakeRb::IncludeDir.new(i) })
-		end
-		if(options.include?(:cxx_includes))
-			mgr.settings.cxx.includes.concat(options[:cxx_includes].map { |i| MakeRb::IncludeDir.new(i) })
-		end
-		if(options.include?(:ownheaders))
-			mgr.resources.concat(options[:ownheaders].map{|f| Header.new(mgr, f) })
-		end
-		if(options.include?(:ldscript))
-			ld.sources << MakeRbBinary::LinkerScript.new(mgr, options[:ldscript])
-		end
-		if(options.include?(:mlc_libs))
-			ld.settings.libraries.concat(options[:mlc_libs].map { |l| mgr.mlc[l] })
-		end
-		if(options.include?(:sys_libs))
-			ld.settings.libraries.concat(options[:sys_libs].map { |l| MakeRb::SystemLibrary.new(l) })
-		end
-		exe
-	end
 end
 
+# Provides identifiers for programming languages
 module MakeRbLang
 	module C
 	end
+	# C++
 	module Cxx
 		def Cxx.parentSettings
 			C
@@ -234,8 +159,10 @@ module MakeRbLang
 	end
 	module Ruby
 	end
+	# Assembler
 	module Asm
 	end
+	# Various language-specific settings
 	def MakeRbLang.settings
 		MakeRb::SettingsMatrix.new(
 			{:toolchain => MakeRbCCxx.tc_gcc, :debug => true, :language => C} => { :clFlags => ["-g"] },

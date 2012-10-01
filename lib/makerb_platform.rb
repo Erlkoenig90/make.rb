@@ -1,11 +1,19 @@
 #!/usr/bin/env ruby
 
 module MakeRb
+	# A platform is any environment for running programs, which requires similar settings for building these programs.
+	# This is usually a combination of processor architecture and operating system, e.g. linux-amd64, stm32f4 (with no OS)
 	class Platform
 		@@platforms = nil
 		include Enumerable
 		attr_reader :name, :settings, :regHash
 		attr_accessor :parentSettings
+		# @param [String] n The platform's (unique) name
+		# @param [SettingsMatrix] s Settings specific for this platform
+		# @param [MakeRbCCxx::Toolchain] tc the default toolchain for this platform
+		# @param [Hash] rh A hash to save this platform in, used internally
+		# @param [Proc] block This block will be called at the end of initialize and be passed this instance. Allows
+		#   for more elegant definition of nested platforms
 		def initialize(n, s = nil, p = nil, tc = nil, rh = nil, &block)
 			@name = n
 			@parentSettings = p
@@ -29,15 +37,26 @@ module MakeRb
 		def to_s
 			object_id.to_s + "#" + @name # + ":" + parentSettings.name
 		end
+		# @return [MakeRbCCxx::ClToolchain] the default toolchain
 		def defToolchain
 			@defToolchain || (if(@parentSettings == nil) then nil else @parentSettings.defToolchain end)
 		end
+		# @return [Platform] The platform we are currently running on. This should be replaced to return an explicit
+		#   platform
 		def self.native()
 			@@native ||= Platform.new("native", nil, nil, MakeRbCCxx.tc_gcc)
 		end
+		# Creates a new platform which has the current one as parent.
+		# @param [String] n The platform's (unique) name
+		# @param [SettingsMatrix] s Settings specific for this platform
+		# @param [MakeRbCCxx::Toolchain] tc the default toolchain for this platform
+		# @param [Proc] block This block will be called at the end of initialize and be passed this instance. Allows
+		#   for more elegant definition of nested platforms
+		# @return [Platform]
 		def newChild(n, s = nil, tc = nil, &block)
 			Platform.new(n, s, self, tc, regHash, &block)
 		end
+		# Returns a platform with the given name, or constructs one using the inline definitions in the name.
 		def Platform.get(str)
 			if(platforms.include?(str))
 				platforms[str]
@@ -85,6 +104,8 @@ module MakeRb
 				Platform.new(str, set, parent, tc, @@platforms)
 			end
 		end
+		# The hash of all platforms
+		# @return [Hash]
 		def Platform.platforms
 			if(@@platforms != nil)
 				@@platforms

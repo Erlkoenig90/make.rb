@@ -1,6 +1,7 @@
 #!/usr/bin/env ruby
 
 module MakeRb
+	# TODO - needs to be fixed, optimized, and integrated
 	class DepMakeFile < FileRes
 		include Generated
 		include ImplicitSrc

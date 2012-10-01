@@ -3,11 +3,12 @@
 require 'pathname'
 require 'set'
 
+# MakeRb External Config (MEC)
 module MakeRbExt
-	# MakeRb External Config (MEC)
-	
+	# Manages loading MEC data from files
 	class ExtManager
 		attr_reader :dirpaths, :buildMgr
+		# param [{MakeRb::BuildMgr}] mgr
 		def initialize(mgr)
 			@buildMgr = mgr
 			@modules = {}
@@ -18,6 +19,8 @@ module MakeRbExt
 					[Pathname.new(Dir.home)+".mec", Pathname.new("/usr/lib/mec")]
 				end).uniq
 		end
+		# Loads MEC files whose names begin with 'name'
+		# @param [String] name
 		def load(name)
 			name.downcase!
 			files = []
@@ -46,12 +49,15 @@ module MakeRbExt
 				desc.register(@buildMgr.settings)
 			}
 		end
+		# Translates a filename in snake-case notation into ruby CamelCase notation
+		# @param [String] fname a package name, e.g. gmodule-no-export-2.0
+		# @return [String] e.g. GmoduleNoExport2
 		def ExtManager.getClassname(fname)
 			a = fname.basename.to_s.gsub(/[_-]\D/) { |s| s[1].upcase }.gsub(".", "_").gsub(/\W/, "")
 			a[0].upcase + a[1..-1]
 		end
 	end
-	
+	# A specific version of a {Library}. Create instances via {MakeRbExt.libver}
 	class LibVersion
 		attr_reader :parentSettings, :version, :deps, :name, :privateDeps
 		def initialize(ver, name_, parent = nil, deps_=nil, pdeps_ = nil)
@@ -65,19 +71,30 @@ module MakeRbExt
 #			puts "Deps: " + deps.map{|l| l.name }.join(",")
 		end
 	end
+	# Returned by {Library#where}. A block which finds a version of a library when passed in a {MakeRb::SettingsMatrix}
+	# and {MakeRb::SettingsKey specialisations}. Needed because usually, when calling {Library#where}, these two
+	# aren't known yet.
 	class LibProxyProc < Proc
 	end
+	# A library which has at least one version. Use {MakeRbExt::library} to create instances.
 	class Library
 		attr_reader :versions, :name
 		def initialize(name_)
 			@versions = {}
 			@name = name_
 		end
+		# Allows to use e.g. LibraryInstance >= [2,4,7], returns an appropriate {LibProxyProc}
+		# @return [LibProxyProc]
 		def method_missing(meth,*args)
 			where { |ver|
 				ver.respond_to?(meth) && ver.send(meth,*args)
 			}
 		end
+		# Returns a block ({LibProxyProc}) which should get passed in a {MakeRb::SettingsMatrix}, a {MakeRb::SettingsKey}
+		# and a ruby Set. This block will fill the set with a version of this library (and its dependencies) which
+		# satisfies the condition(s) given via the 'block' parameter, and also supports the given
+		# specialisation ({MakeRb::SettingsKey}). If no such library is found, it will throw an exception
+		# @return [LibProxyProc]
 		def where(&block)
 			LibProxyProc.new { |matrix,key,set=nil|
 				if(set == nil)
@@ -103,11 +120,21 @@ module MakeRbExt
 				set
 			}
 		end
+		# Returns a {LibProxyProc} which gives the newest library version 
+		# @return [LibProxyProc]
 		def latest
-			where { |v| true }
+			where { |v| true } # where automatically gives the newest version
 		end
 	end
 	
+	# Defines a version of a {MakeRbExt.library defined} {Library}.
+	# @param [Symbol] name The name of the library version, in CamelCase - will define a ruby constant MakeRb::name. e.g. GmoduleNoExport2_2_32_4
+	# @param [Library] lib The corresponding {Library} instance
+	# @param [Hash] options A hash with options:
+	#   * :deps => Dependencies for this library, an Array of {LibProxyProc} (returned by {Library#where})
+	#   * :deps => same as :deps, but private dependencies - will only be used for static linking. This is a
+	#      workaround for systems which don't support static library dependencies (e.g. Linux)
+	#   * :parent => An object to inherit settings from, see {MakeRb::SettingsMatrix} about inheriting settings
 	def MakeRbExt.libver(name, lib, options={})
 		inst = LibVersion.new(options[:version] || [], name.to_s, options[:parent], options[:deps] || [], options[:pdeps] || [])
 		MakeRbExt.const_set(name, inst)
@@ -116,6 +143,9 @@ module MakeRbExt
 		lib
 	end
 	
+	# Define a library. If there's already a library with this name, does nothing.
+	# @param [Symbol] name the library name, in CamelCase notation - will define a ruby constant MakeRbExt::name. e.g. GmoduleNoExport2
+	# @return [Library] the created (or already existing) library
 	def MakeRbExt.library(name)
 		if(!MakeRbExt.const_defined?(name))
 			MakeRbExt.const_set(name, Library.new(name))
