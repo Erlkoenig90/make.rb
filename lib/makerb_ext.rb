@@ -103,7 +103,7 @@ module MakeRbExt
 				srcloc = block.source_location
 				srcloc = if(srcloc != nil) then srcloc[0] + ":" + srcloc[1].to_s else "<unknown>" end
 				libver = (@versions.select { |ver,lib|
-					matrix.libSupports?(lib, key) && block.call(ver)
+					matrix.libSupports?(lib, key) && block.call(ver,lib)
 				}.max(){ |a,b| a[0] <=> b[0] } || raise("No version of library `#{@name}' satisfying condition from #{srcloc} found: #{@versions}"))[1]
 				
 				if(!set.include?(libver))

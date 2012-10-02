@@ -195,13 +195,13 @@ def outpkg(pkg)
 		#		ldflags = MakeRb.parseFlags(`pkg-config --libs #{pkg}`).inspect
 
 		$settings = $settings + "\n" +																					# , :language => MakeRbLang::C
-		"\t\t\tkey = SettingsKey[:libraries => #{libver}, :platform => MakeRb::Platform.native, :toolchain => MakeRbCCxx.tc_gcc, :language => MakeRbLang::C]\n" +
+		"\t\t\tkey = MakeRb::SettingsKey[:libraries => #{libver}, :platform => MakeRb::Platform.native, :toolchain => MakeRbCCxx.tc_gcc, :language => MakeRbLang::C]\n" +
 		"\t\t\tsettings[key] =
-	\t\t\tSettings[:support => true, :clFlags => #{cflags}, :ldFlags => #{ldflags}" +
+	\t\t\tMakeRb::Settings[:support => true, :clFlags => #{cflags}, :ldFlags => #{ldflags}" +
 		if(!includes.empty?) then ", :includeDirs => MakeRb::UniqPathList[" + includes.join(",") + "]" else "" end +
 		if(!libfiles.empty?) then ", :libraryFiles => MakeRb::UniqPathList[" + libfiles.join(",") + "]" else "" end + "];\n" +
 		if(!libfilesP.empty? || !ldflagsPrivate.empty?)
-			"\t\t\tsettings[key + {:staticLinking => true}] = Settings[" +
+			"\t\t\tsettings[key + {:staticLinking => true}] = MakeRb::Settings[" +
 			(if(ldflagsPrivate.empty?) then [] else [":ldFlags => #{ldflagsPrivate}"] end +
 				if(libfilesP.empty?) then [] else [":libraryFiles => [" + libfilesP.join(",") + "]"] end).join(",") + "]\n"
 		else "" end

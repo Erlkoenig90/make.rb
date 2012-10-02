@@ -39,7 +39,13 @@ platform specially.
 However, make.rb is still in an experimental state, with currently few builders included and only support
 for [GCC](http://gcc.gnu.org) - but the overall structure is in place, facilitating fixing these holes.
 
-Planned/missing features are:
+### Using make.rb
+See {file:docs/using.md using make.rb}
+
+### License
+See {file:LICENSE}
+
+Planned/missing features are (TODO-List):
 
 * A simple Gtk+ UI displaying the builder's output in a way suitable for concurrent processing
 * Recompiling C/C++ files when included header files change (using the -M* flag of GCC). Some code for this is
@@ -51,4 +57,7 @@ written, but needs to be fixed, optimized & integrated
 * Defining files to be installed by the program, so make.rb can generate packages for linux package managers and
 possibly windows setup files
 * Calling external make.rb configuration scripts to include their resource's
+* Custom command line settings
+* Packages for package systems
+* Complete the documentation
 * Various TODO's in the code
