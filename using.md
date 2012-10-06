@@ -87,6 +87,27 @@ for the arguments of "dep" are left out - this can be done when the arrays have 
 filename is also omitted, and will be automatically generated from the "main.c" filename by the {MakeRbCCxx::CObjFile.auto}
 method. This way you can rename "main" and only need to adjust the name at one place in the make.rb script.
 
+<a name="ddep"></a>
+The "{MakeRbConv#ddep ddep}" method calls "dep" for each argument and the given rule name:
+
+	require 'make.rb'	# Load the make.rb library
+	
+	include MakeRb		# These are not strictly required, but result in shorter code
+	include MakeRbCCxx
+	include MakeRbBinary
+	include MakeRbExt
+	
+	# Initialize the build system. The exit command is used to give this process a meaningful exit code
+	exit BuildMgr.run {	
+		rule "cc", [CFile], [CObjFile], host + {language: MakeRbLang::C}, Gtk3.latest, :compiler
+		rule "ld", [], [Executable], host + {language: MakeRbLang::C}, Gtk3.latest, :linker
+
+		ofiles = ddep "cc", "main.c", "ui.c", "options.c"
+		dep "ld", ofiles, "test"
+	} # After this block returns, the BuildMgr starts the build process.
+
+This allows processing several source files at once.
+
 The "rule" command also has an integrated way of declaring libraries:
 
 	loadExt "gtk"

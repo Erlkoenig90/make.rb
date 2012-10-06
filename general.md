@@ -45,6 +45,9 @@ See {file:docs/using.md using make.rb}
 ### License
 See {file:LICENSE}
 
+### Author
+{profclonk@gmail.com Niklas Gürtler}
+
 Planned/missing features are (TODO-List):
 
 * A simple Gtk+ UI displaying the builder's output in a way suitable for concurrent processing
