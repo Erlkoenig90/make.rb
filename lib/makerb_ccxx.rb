@@ -9,15 +9,9 @@ module MakeRbCCxx
 	end
 	# An object file, result of compiling a C file
 	class CObjFile < MakeRbBinary::ObjFile
-		def CObjFile.auto(src)
-			CObjFile.new(src.buildMgr, src.filename.sub_ext(".o"))
-		end
 	end
 	# An object file, result of compiling a C++ file. Use this to indicate that C++ options should be used for linking.
 	class CxxObjFile < MakeRbBinary::ObjFile
-		def CxxObjFile.auto(src)
-			CxxObjFile.new(src.buildMgr, src.filename.sub_ext(".o"))
-		end
 	end
 	# A header file - used for dependency tracking
 	class Header < MakeRb::FileRes
@@ -165,7 +159,12 @@ module MakeRbLang
 	# Various language-specific settings
 	def MakeRbLang.settings
 		MakeRb::SettingsMatrix.new(
-			{:toolchain => MakeRbCCxx.tc_gcc, :debug => true, :language => C} => { :clFlags => ["-g"] },
+			{{:toolchain => MakeRbCCxx.tc_gcc, :debug => true, :language => C} => MakeRb::Settings[:clFlags => ["-g"]],
+				{:toolchain => MakeRbCCxx.tc_gcc, :resourceClass => MakeRbCCxx::CFile} => MakeRb::Settings[ :fileExt => ".c" ], 
+				{:toolchain => MakeRbCCxx.tc_gcc, :resourceClass => MakeRbCCxx::CxxFile} => MakeRb::Settings[ :fileExt => ".cc" ], 
+				{:toolchain => MakeRbCCxx.tc_gcc, :resourceClass => MakeRbBinary::AsmFile} => MakeRb::Settings[ :fileExt => ".s" ], 
+				{:toolchain => MakeRbCCxx.tc_gcc, :resourceClass => MakeRbBinary::ObjFile} => MakeRb::Settings[ :fileExt => ".o" ],
+				{:toolchain => MakeRbCCxx.tc_gcc, :resourceClass => MakeRbBinary::LinkerScript} => MakeRb::Settings[ :fileExt => ".ld" ]},
 		)
 	end
 end

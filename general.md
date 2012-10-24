@@ -34,7 +34,7 @@ and flexible **replacement for [pkg-config](http://www.freedesktop.org/wiki/Soft
 These features make make.rb specially useful for **cross-platform** and **cross-compiling** applications.
 That doesn't mean make.rb makes your application run magically on another platform than it was written for - make.rb
 just makes sure the correct compiler is called with the correct arguments, your code still needs to address every
-platform specially.  
+platform specially.
 
 However, make.rb is still in an experimental state, with currently few builders included and only support
 for [GCC](http://gcc.gnu.org) - but the overall structure is in place, facilitating fixing these holes.

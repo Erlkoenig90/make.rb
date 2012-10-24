@@ -8,9 +8,6 @@ module MakeRbBinary
 	# An object file, i.e. the result of compiling (but not linking) a C source.
 	class ObjFile < MakeRb::FileRes
 		include MakeRb::Generated;
-		def ObjFile.auto(src)
-			ObjFile.new(src.buildMgr, src.filename.sub_ext(".o"))
-		end
 	end
 	# The product of linking, i.e. an executable binary or a library.
 	class LinkedFile < MakeRb::FileRes

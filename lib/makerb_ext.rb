@@ -13,11 +13,7 @@ module MakeRbExt
 			@buildMgr = mgr
 			@modules = {}
 			@dirpaths ||= ((ENV['MAKERB_EC_PATH'] || "").split(";").map{|p| Pathname.new(p) } +
-				if(MakeRb.isWindows)
-					[Pathname.new(ENV['APPDATA']) + "mec", Pathname.new(ENV['ProgramFiles']) + "mec"]
-				else
-					[Pathname.new(Dir.home)+".mec", Pathname.new("/usr/lib/mec")]
-				end).uniq
+				@buildMgr.nativeSettings[:mecPaths].call()).uniq
 		end
 		# Loads MEC files whose names begin with 'name'
 		# @param [String] name

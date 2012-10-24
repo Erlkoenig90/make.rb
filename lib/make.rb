@@ -11,20 +11,6 @@ require 'makerb_platform'
 require 'makerb_ext'
 
 module MakeRb
-	# Checks whether we are currently running on Windows. The result does/should not affect the built files,
-	# and is just to determine how to run programs, process pathnames etc.
-	# @return [Boolean] whether we are running windows
-	def MakeRb.isWindows
-		@@is_windows ||= (RbConfig::CONFIG['host_os'] =~ /mswin|mingw|cygwin/)
-	end
-	# @return [String] "NUL" for windows systems, "/dev/null" else. 
-	def MakeRb.nullFile
-		if(isWindows)
-			"NUL"
-		else
-			"/dev/null"
-		end
-	end
 	# Calls preUse on the given array, and if any of them fails, calls postUse
 	# @param [Array] arr an array of {Resource}s
 	def MakeRb.safePreUse(arr)
@@ -93,11 +79,12 @@ module MakeRb
 	# Represents a data set to be used by builders. In most cases, the derived class {FileRes} will be used. This
 	# is the abstract form, which could also represent e.g. a database.
 	class Resource
-		attr_accessor :builder, :buildMgr
+		attr_accessor :builder, :buildMgr, :specialisations
 		# @param [BuildMgr] mgr
-		def initialize(mgr)
+		def initialize(mgr, spec)
 			@builder = nil
 			@buildMgr = mgr
+			@specialisations = spec
 			mgr << self
 		end
 		# To be overwritten by derived classes. Should return a string which identifies this resource uniquely.
@@ -210,7 +197,7 @@ module MakeRb
 		attr_reader :name, :filename
 		# @param [BuildMgr] mgr
 		# @param [Pathname, String] fname
-		def initialize(mgr, fname)
+		def initialize(mgr, spec, fname)
 			if(fname.is_a?(String))
 				@filename_str = fname
 				fname = Pathname.new(fname)
@@ -225,7 +212,7 @@ module MakeRb
 				fname = mgr.builddir + fname
 			end
 			@filename = fname
-			super(mgr)
+			super(mgr, spec)
 		end
 		# See {Resource#rebuild?}
 		def rebuild?(other)
@@ -279,6 +266,11 @@ module MakeRb
 		# Yields the Pathname to really be used on building (e.g. in the build directory). See {BuildMgr#effective}
 		def effective
 			buildMgr.effective(filename)
+		end
+		def FileRes.auto(src, *args)
+			klass = self
+			ext = src.buildMgr.settings.getSettings(MakeRb::SettingsKey[:resourceClass => klass] + src.specialisations)[:fileExt] || ""
+			self.new(src.buildMgr, src.specialisations, src.filename.sub_ext(ext), *args)
 		end
 	end
 	# A {FileRes} that includes the {Generated} mixin.
@@ -342,7 +334,7 @@ module MakeRb
 #				puts "spawning " + cmd.join(" ")
 				if(cmd != nil)
 					r, w = IO.pipe
-					pid = spawn(*cmd, :out=>w, :err=>w, r=>:close, :in=>MakeRb.nullFile)
+					pid = spawn(*cmd, :out=>w, :err=>w, r=>:close, :in=>@buildMgr.nativeSettings[:nullFile])
 					w.close
 					
 					[cmd, pid, r]

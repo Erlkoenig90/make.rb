@@ -49,6 +49,7 @@ module MakeRb
 			@debug = false
 			@keepgoing = false
 			@builddir = nil
+			@verbose = false
 			@mec = nil
 		end
 
@@ -190,17 +191,18 @@ module MakeRb
 				nil
 			end
 		end
-
+		
+		# TODO fix doc
 		# To be called by the script. Parses the command line arguments, sets up the build environment, calls the
 		# block and starts the build process.
 		# @param [Proc] block The block should define the {Builder}s and {Resource}s for the program.
-		def run(&block)
+		def run(decl)
 			#				opts.banner = "Usage: #{$0} [options] [targets]"
 			#					puts 'Possible compiler toolchains to specify:'
 			#					MakeRbCCxx.compilers.each { |key,val|
 			#						puts "\t" + key + "\t\t" + val[0];
 			#					}
-			namespaceDoObfuscator = typeKeys
+			namespaceDeObfuscator = typeKeys
 			opts = Trollop::options {
 				opt :jobs, 'Number of jobs to run simultaneously, 0 for infinite', :short => '-j', :default => 1
 				opt "build", 'Specify the platform we are compiling on.', :default => 'native'
@@ -210,8 +212,9 @@ module MakeRb
 				opt :debug, 'Enable debugging on all platforms', :default => false
 				opt :keep_going, 'Don\'t abort on error, but run as many tasks as possible', :default => false, :short => '-k'
 				opt :builddir, 'Store generated files in this directory', :default => 'build'
+				opt :verbose, 'Output some information', :default => false, :short => '-v'
 
-				namespaceDoObfuscator.each { |type,key|
+				namespaceDeObfuscator.each { |type,key|
 					opt "#{type}-debug", "Enable debugging for the `#{type}\' platform.", :default => false
 				}
 
@@ -222,12 +225,13 @@ module MakeRb
 			@keepgoing = opts[:keep_going]
 			@root = Pathname.new(File.dirname($0))
 			@builddir = Pathname.new(opts[:builddir]) + (if opts[:debug] then "debug" else "release" end)
+			@verbose = opts[:verbose]
 
 			typeKeys.each { |type, key|
 				# Get the platform
 				p = opts[type.to_s]
 				key[:platform] = pf = MakeRb::Platform.get(p)
-
+				
 				# Use the default toolchain, which might come from the command line
 				key[:toolchain] = pf.defToolchain || raise("No toolchain for `#{type}' specified and no default toolchain defined")
 
@@ -237,9 +241,12 @@ module MakeRb
 
 			@settings = SettingsMatrix.build # the global settings blob. this has to come *after* querying (and possibly building) the platform objects.
 			@mec = MakeRbExt::ExtManager.new(self)
-			#			@mlc["zlib"]
+			
+			if(@verbose)
+				puts "Running on platform #{Platform.native.name}"
+			end
 
-			block.call
+			decl.declare
 			@resources.each { |r| r.initialize2 }
 
 			if (ARGV.size == 1 && ARGV[0] == "clean")
@@ -264,23 +271,22 @@ module MakeRb
 						@resources[i]
 					}
 				end
-				puts "Building targets: " + targets.map {|t| t.name }.join(", ")
+				if(@verbose)
+					puts "Building targets: " + targets.map {|t| t.name }.join(", ")
+				end
 				@exitcode = 0
 				build(targets)
 				@exitcode
 			end
 		end
-
+	
+		# TODO fix doc
 		# For using the convenience API (see {MakeRbConv}). Similar to {#run}, but the block will be executed
 		# in the context of a {MakeRbConv} instance for using the {MakeRbConv#rule rule}, {MakeRbConv#dep dep}
 		# etc. methods.
 		# @param [Proc] block The block should define the {Builder}s and {Resource}s for the program using {MakeRbConv}'s methods
 		def BuildMgr.run(&block)
-			mgr = BuildMgr.new
-			cv = MakeRbConv.new(mgr)
-			mgr.run {
-				cv.instance_eval(&block)
-			}
+			ImplDeclarations.new(block)
 		end
 
 		# Adds the given object to the {BuildMgr}'s knowledge, to make them available for building.
@@ -324,6 +330,43 @@ module MakeRb
 		def effective(p)
 			p = if(p.is_a?(Pathname)) then p else Pathname.new(p) end
 			if(p.absolute?) then p else @root + p end
+		end
+		
+		# Returns the {SettingsMatrix#getSettings settings} for the platform we are currently running on
+		def nativeSettings
+			settings.getSettings({:platform => Platform.native})
+		end
+	end
+	# TODO doc
+	class Declarations
+		attr_reader :buildMgr, :conv
+		def initialize
+			@buildMgr = BuildMgr.new
+			@conv = MakeRbConv.new(@buildMgr)
+			@buildMgr.run(self)
+		end
+		def declare
+			namespaceDeObfuscator = self
+			@conv.instance_eval(&namespaceDeObfuscator.declarec)
+		end
+		def options
+		end
+	end
+	# TODO doc
+	class ImplDeclarations < Declarations
+		def initialize(block)
+			@implBlock = block
+			super()
+		end
+		def declare
+			conv.instance_eval(&@implBlock)
+		end
+	end
+	def MakeRb.declare(&block)
+		klass = Class.new(Declarations, &block)
+		inst = klass.new
+		if(isset($makerb_caller))
+			
 		end
 	end
 end
@@ -443,7 +486,7 @@ class MakeRbConv
 			if(i >= r.src.length || r.src[i] == nil)
 				if(sparam[i].is_a?(Resource)) then sparam[i] else res(sparam[i]) end
 			else
-				mkRes(r.src[i], *sparam[i])
+				mkRes(r.src[i], spec, *sparam[i])
 			end
 		}
 		if(!dparam.is_a?(Array) && dparam != nil) then dparam = [dparam] end
@@ -453,7 +496,7 @@ class MakeRbConv
 			elsif((dparam == nil || i >= dparam.length || dparam[i] == nil) && r.dest[i].respond_to?(:auto))
 				r.dest[i].auto(*src)
 			else
-				mkRes(r.dest[i], *dparam[i])
+				mkRes(r.dest[i], spec, *dparam[i])
 			end
 		}
 		spec = src.inject(spec) { |old,obj| old+obj.srcSpecialisations }
@@ -519,11 +562,15 @@ class MakeRbConv
 	end
 
 	# Callback/hook for creating resource instances
-	def mkRes(klass,*args)
-		if(klass < FileRes && @tprefix != nil)
-			klass.new(buildMgr, @tprefix +args[0], *(args[1..-1]))
+	def mkRes(klass, spec, *args)
+		if(klass < FileRes)
+			if(File.extname(args[0]).downcase == "")
+				ext = @buildMgr.settings.getSettings(spec + MakeRb::SettingsKey[:resourceClass => klass])[:fileExt] || ""
+				args[0] += ext
+			end 
+			klass.new(buildMgr, spec, (@tprefix||"")+args[0], *(args[1..-1]))
 		else
-			klass.new(buildMgr, *args)
+			klass.new(buildMgr, spec, *args)
 		end
 	end
 

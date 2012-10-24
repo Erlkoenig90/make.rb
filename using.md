@@ -22,6 +22,7 @@ make.rb includes a 'convenience API' which simplifies building the graph of buil
 most use cases. What follows is an explanation by example about how to use this API.
 
 ### make.rb convenience API
+#### Basic layout, rule and dep
 The basic layout for a make.rb project configuration file is:
 
 	require 'make.rb'	# Load the make.rb library
@@ -88,6 +89,7 @@ filename is also omitted, and will be automatically generated from the "main.c" 
 method. This way you can rename "main" and only need to adjust the name at one place in the make.rb script.
 
 <a name="ddep"></a>
+#### ddep
 The "{MakeRbConv#ddep ddep}" method calls "dep" for each argument and the given rule name:
 
 	require 'make.rb'	# Load the make.rb library
@@ -107,6 +109,26 @@ The "{MakeRbConv#ddep ddep}" method calls "dep" for each argument and the given 
 	} # After this block returns, the BuildMgr starts the build process.
 
 This allows processing several source files at once.
+
+<a name="subdir"></a>
+#### subdir
+The {MakeRbConv#subdir subdir} method allows for shorter specification of files located in a subdirectory. Assume the source
+files and the executable from the above example are located in the directory "src":
+
+		ofiles = ddep "cc", "src/main.c", "src/ui.c", "src/options.c"
+		dep "ld", ofiles, "src/test"
+
+The shorter version using subdir whould be:
+
+	subdir("src") {
+		ofiles = ddep "cc", "main.c", "ui.c", "options.c"
+		dep "ld", ofiles, "test"
+	}
+
+This way you can also rename/move the "src" directory easily.
+
+<a name="libs"></a>
+#### Libraries
 
 The "rule" command also has an integrated way of declaring libraries:
 

@@ -64,24 +64,29 @@ module MakeRb
 			if(otherS == nil) then self
 			else
 				merge(otherS) { |key,own,other|
-					if(own.respond_to?(:inheritSettings))
-						own.inheritSettings(other)
-					elsif(other == nil)
-						own
-					elsif(own.is_a?(Array) && other.is_a?(Array))
-						own + other
-					elsif(own.is_a?(String) && other.is_a?(String))
-						own
-					elsif((own == true || own == false) && (other == true || other == false))  # why is there no "Boolean" class?
-						if(own != other)
-							raise "Error on merging settings: Two different booleans found (own=#{own}, other=#{other})"
-						else
-							own
-						end
-					else
-						raise "Error on merging settings: Don't know how to merge #{own.class.name} and #{other.class.name}"
-					end
+					Settings.merge(own, other)
 				}
+			end
+		end
+		def Settings.merge(own, other)
+			if(own.respond_to?(:inheritSettings))
+				own.inheritSettings(other)
+			elsif(other == nil)
+				own
+			elsif(own.is_a?(Array) && other.is_a?(Array))
+				own + other
+			elsif(own.is_a?(String) && other.is_a?(String))
+				own
+			elsif((own == true || own == false) && (other == true || other == false))  # why is there no "Boolean" class?
+				if(own != other)
+					raise "Error on merging settings: Two different booleans found (own=#{own}, other=#{other})"
+				else
+					own
+				end
+			elsif(own.is_a?(Proc) && other.is_a?(Proc))
+				Proc.new { Settings.merge(own, other) }
+			else
+				raise "Error on merging settings: Don't know how to merge #{own.class.name} and #{other.class.name}"
 			end
 		end
 	end
@@ -203,7 +208,8 @@ module MakeRb
 						settings = if(settings == nil) then n else settings + n end
 						if(obj == nil) then break end
 	#					$stdout.write("parent #{obj} to ")
-						obj = if(obj.respond_to?(:parentSettings)) then obj.parentSettings else nil end
+						obj = if(obj.respond_to?(:parentSettings)) then obj.parentSettings
+							elsif(obj.is_a?(Class)) then obj.superclass else nil end
 	#					puts obj
 						if(obj == nil)
 							keyhash.delete(key)
