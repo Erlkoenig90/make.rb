@@ -50,6 +50,7 @@ See {file:LICENSE}
 
 Planned/missing features are (TODO-List):
 
+* Pass selected platform to compiled code via -D
 * A simple Gtk+ UI displaying the builder's output in a way suitable for concurrent processing
 * Recompiling C/C++ files when included header files change (using the -M* flag of GCC). Some code for this is
 written, but needs to be fixed, optimized & integrated

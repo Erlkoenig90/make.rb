@@ -504,12 +504,8 @@ class MakeRbConv
 
 		libs = (options[:libs] || [])
 		if(!libs.is_a?(Array)) then libs = [libs] end
-		libs = r.libs + libs
-		set = Set[]
-		libs.each { |lib|
-			lib.call(@buildMgr.settings, spec, set)
-		}
-		spec[:libraries] = set.to_a
+		spec[:libraries] = (r.libs + libs).map { |lib|  lib.call(@buildMgr.settings, spec) }.uniq
+		
 
 		if(r.builder != nil)
 			builders = [r.builder.new(buildMgr, spec, src, dest, *(options[:builder] || []))]

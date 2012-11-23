@@ -2,10 +2,15 @@
 
 # Using make.rb
 ## Installing
+### Requirements
+* Ruby version 1.9.2
+* <a href="http://trollop.rubyforge.org/">trollop</a> version 1.16.2, will be installed automatically by the "gem install" command below
+
+### Installing
 Obtain the source via git, build the gem, and install it:
 
 	git clone git://minecraft.niklas.2g2s.de:50002/make.rb
-	gem build make.rb
+	gem build make.rb.gemspec
 	gem install make.rb
 
 ## Configuring make.rb for a project

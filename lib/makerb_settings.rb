@@ -3,40 +3,6 @@
 require 'set'
 
 module MakeRb
-	def MakeRb.collectDepsG(ary,pf,lsym,lcsym)
-		puts "collectDepsG([" + ary.map{|a| a}.join(",") + "], #{pf.name}, #{lsym}, #{lcsym}"
-		f = ary.map() { |el|
-			if(el.used)
-				[]
-			else
-				el.used = true
-			
-				[el] + if(el.respond_to?(:deps))
-					collectDepsG(el.deps, lsym, lcsym)
-				else
-					[]
-				end + if(el.respond_to?(:settings))
-					puts "sub-settings"
-					puts el.settings
-					puts pf
-					puts el	
-					collectDepsG(el.settings[pf].send(lsym).send(lcsym),pf,lsym,lcsym)
-				else
-					[]
-				end
-			end
-		}
-	end
-	def MakeRb.collectIDeps(ary,pf,cx)
-		f = MakeRb.collectDepsG(ary,pf,if cx then :cxx else :cc end, :includes).flatten
-		f.each { |el| el.used = false }
-		f
-	end
-	def MakeRb.collectLDeps(ary,pf)
-		f = MakeRb.collectDepsG(ary,pf,:ld, :libraries).flatten
-		f.each { |el| el.used = false }
-		f
-	end
 	def MakeRb.isParentSetting(parent,child)
 		(parent == nil || parent == child) ||
 			(child.respond_to?(:parentSettings) && MakeRb.isParentSetting(parent, child.parentSettings))
@@ -146,13 +112,6 @@ module MakeRb
 		def [](keyhash) # O(2^keyhash.size)
 			getSettings(keyhash)
 		end
-		def getSettings(keyhash) # O(2^keyhash.size)
-#			puts keyhash
-			@cache.fetch(keyhash) {
-				keys = keyhash.keys
-				@cache[keyhash] = (getSettingsR(keyhash,keys,0) || {})
-			}
-		end
 		def +(otherS)
 			SettingsMatrix.new(hash.merge(otherS.hash) { |key,own,other|
 				own + other
@@ -180,6 +139,34 @@ module MakeRb
 		end
 		def to_s
 			"SettingsMatrix###{object_id} " + hash.to_s
+		end
+		def getSettings(keyhash) # O(2^keyhash.size)
+	#			puts keyhash
+			@cache.fetch(keyhash) {
+				woArrays = keyhash.select {|k,v| !v.is_a?(Array) }
+				expanded = keyhash.clone
+				expanded.each { |k,v|
+					if(v.is_a?(Array))
+						collected = Set[]
+						queue = v.clone
+						while(!queue.empty?)
+							el = queue.first
+							if(!collected.include?(el))
+								collected << el
+								if(el.respond_to?(:settingDeps))
+									deps = el.settingDeps(self,woArrays)
+									queue.concat(deps)
+								end
+							end
+							queue.delete_at(0)
+						end
+						expanded[k] = collected.to_a
+					end
+				}
+				
+				keys = expanded.keys
+				@cache[keyhash] = (getSettingsR(expanded,keys,0) || {})
+			}
 		end
 		private
 		def getSettingsR(keyhash,keys,depth,nonil = false) # O(2^keys.length)

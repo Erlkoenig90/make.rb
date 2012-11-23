@@ -107,12 +107,20 @@ module MakeRbCCxx
 				ldScript = sources.find { |s| s.is_a?(MakeRbBinary::LinkerScript) }
 				ldScript = if(ldScript == nil) then [] else ["-T", ldScript.buildMgr.effective(ldScript.filename).to_s] end
 				
+				if(s[:circularLookup])
+					before = ["-Wl,--start-group"]
+					after = ["-Wl,--end-group"]
+				else
+					before = []
+					after = []
+				end
+				
 				[prefix + tool] + if (targets[0].is_a?(MakeRbBinary::DynLibrary))
 					["-shared"]
 				else
 					[]
 				end + ["-o", targets[0].buildMgr.effective(targets[0].filename).to_s] +
-					sources.select{ |s| !s.is_a?(MakeRb::ImplicitSrc) && !s.is_a?(MakeRbBinary::LinkerScript) }.map{|s| s.buildMgr.effective(s.filename).to_s } +
+					before + sources.select{ |s| !s.is_a?(MakeRb::ImplicitSrc) && !s.is_a?(MakeRbBinary::LinkerScript) }.map{|s| s.buildMgr.effective(s.filename).to_s } + after +
 						ldScript + flags
 			end
 		end

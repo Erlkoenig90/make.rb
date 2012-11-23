@@ -7,10 +7,11 @@ require 'set'
 module MakeRbExt
 	# Manages loading MEC data from files
 	class ExtManager
-		attr_reader :dirpaths, :buildMgr
+		attr_reader :dirpaths, :buildMgr, :loaded
 		# param [{MakeRb::BuildMgr}] mgr
 		def initialize(mgr)
 			@buildMgr = mgr
+			@loaded = []
 			@modules = {}
 			@dirpaths ||= ((ENV['MAKERB_EC_PATH'] || "").split(";").map{|p| Pathname.new(p) } +
 				@buildMgr.nativeSettings[:mecPaths].call()).uniq
@@ -32,17 +33,29 @@ module MakeRbExt
 				end
 			}
 			files.each { |file|
-				descname = ExtManager.getClassname(file.sub_ext("")) + "Desc"
-				filename = file.to_s
-				require(filename)
-				
-				desc = begin
-					MakeRbExt.const_get(descname)
-				rescue NameError
-					raise("File `#{filename}' should contain a ruby class `#{descname}', but doesn't")
+				if(!@loaded.include?(file))
+					@loaded << file
+#					puts "loading #{file}"
+					descname = ExtManager.getClassname(file.sub_ext("")) + "Desc"
+					filename = file.to_s
+					last = $mec_mgr
+	#				p filename
+	#				p MakeRbExt.constants
+	
+					$mec_mgr = self
+					require(filename)
+					$mec_mgr = last
+					
+	#				p filename
+	#				p MakeRbExt.constants
+					desc = begin
+						MakeRbExt.const_get(descname)
+					rescue NameError
+						raise("File `#{filename}' should contain a ruby module `#{descname}', but doesn't")
+					end
+					
+					desc.register(@buildMgr.settings)
 				end
-				
-				desc.register(@buildMgr.settings)
 			}
 		end
 		# Translates a filename in snake-case notation into ruby CamelCase notation
@@ -55,16 +68,21 @@ module MakeRbExt
 	end
 	# A specific version of a {Library}. Create instances via {MakeRbExt.libver}
 	class LibVersion
-		attr_reader :parentSettings, :version, :deps, :name, :privateDeps
-		def initialize(ver, name_, parent = nil, deps_=nil, pdeps_ = nil)
+		attr_reader :parentSettings, :version, :name
+		def initialize(ver, name_, parent = nil)
 			@parentSettings = parent
 			@version = ver
 			@version.extend(Comparable)
-			@deps = deps_ || []
-			@privateDeps = pdeps_ || []
 			@name = name_
 			
 #			puts "Deps: " + deps.map{|l| l.name }.join(",")
+		end
+		def settingDeps(matrix, key)
+			if ((deps = (matrix.getSettings({:mecLibrary => self})[:mecDependencies])) != nil)
+				deps.call(matrix,key).map { |p| p.call(matrix,key) }
+			else
+				[]
+			end
 		end
 	end
 	# Returned by {Library#where}. A block which finds a version of a library when passed in a {MakeRb::SettingsMatrix}
@@ -86,34 +104,22 @@ module MakeRbExt
 				ver.respond_to?(meth) && ver.send(meth,*args)
 			}
 		end
+		# TODO fix doc
 		# Returns a block ({LibProxyProc}) which should get passed in a {MakeRb::SettingsMatrix}, a {MakeRb::SettingsKey}
 		# and a ruby Set. This block will fill the set with a version of this library (and its dependencies) which
 		# satisfies the condition(s) given via the 'block' parameter, and also supports the given
 		# specialisation ({MakeRb::SettingsKey}). If no such library is found, it will throw an exception
 		# @return [LibProxyProc]
 		def where(&block)
-			LibProxyProc.new { |matrix,key,set=nil|
+			LibProxyProc.new { |matrix,key|
 				if(set == nil)
 					set = Set[]
 				end
 				srcloc = block.source_location
 				srcloc = if(srcloc != nil) then srcloc[0] + ":" + srcloc[1].to_s else "<unknown>" end
-				libver = (@versions.select { |ver,lib|
+				(@versions.select { |ver,lib|
 					matrix.libSupports?(lib, key) && block.call(ver,lib)
 				}.max(){ |a,b| a[0] <=> b[0] } || raise("No version of library `#{@name}' satisfying condition from #{srcloc} found: #{@versions}"))[1]
-				
-				if(!set.include?(libver))
-					set << libver
-					libver.deps.each { |dep|
-						dep.call(matrix,key,set)
-					}
-					if(key[:staticLinking] || false)
-						libver.privateDeps.each { |dep|
-							dep.call(matrix,key,set)
-						}
-					end
-				end
-				set
 			}
 		end
 		# Returns a {LibProxyProc} which gives the newest library version 
@@ -123,20 +129,19 @@ module MakeRbExt
 		end
 	end
 	
-	# Defines a version of a {MakeRbExt.library defined} {Library}.
+	# Defines a version of a {MakeRbExt.library defined} {Library}, if not already defined.
 	# @param [Symbol] name The name of the library version, in CamelCase - will define a ruby constant MakeRb::name. e.g. GmoduleNoExport2_2_32_4
 	# @param [Library] lib The corresponding {Library} instance
 	# @param [Hash] options A hash with options:
-	#   * :deps => Dependencies for this library, an Array of {LibProxyProc} (returned by {Library#where})
-	#   * :deps => same as :deps, but private dependencies - will only be used for static linking. This is a
-	#      workaround for systems which don't support static library dependencies (e.g. Linux)
 	#   * :parent => An object to inherit settings from, see {MakeRb::SettingsMatrix} about inheriting settings
 	def MakeRbExt.libver(name, lib, options={})
-		inst = LibVersion.new(options[:version] || [], name.to_s, options[:parent], options[:deps] || [], options[:pdeps] || [])
-		MakeRbExt.const_set(name, inst)
-		
-		lib.versions[inst.version] = inst
-		lib
+		if(!MakeRbExt.const_defined?(name))
+			inst = LibVersion.new(options[:version] || [], name.to_s, options[:parent])
+			MakeRbExt.const_set(name, inst)
+			
+			lib.versions[inst.version] = inst
+		end
+		MakeRbExt.const_get(name)
 	end
 	
 	# Define a library. If there's already a library with this name, does nothing.
@@ -147,5 +152,12 @@ module MakeRbExt
 			MakeRbExt.const_set(name, Library.new(name))
 		end
 		MakeRbExt.const_get(name)
+	end
+	# Load MEC files starting with any of the given names
+	# @param [Array] filename prefixes
+	def MakeRbExt.loadExt(*names)
+		names.each { |name|
+			$mec_mgr.load(name)
+		}
 	end
 end
