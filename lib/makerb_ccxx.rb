@@ -30,7 +30,6 @@ module MakeRbCCxx
 		def depTarget
 			@depTarget ||= targets.find { |t| t.is_a?(MakeRb::DepMakeFile) }
 		end
-		
 		def baseCmd
 			sources.each { |s|
 				if (!s.is_a?(MakeRb::FileRes))
@@ -41,16 +40,20 @@ module MakeRbCCxx
 			cxx = sources.inject(false) { |o,s| o || s.is_a?(CxxFile) }
 			tool = if(cxx) then "g++" else "gcc" end
 			lang = if(cxx) then MakeRbLang::Cxx else MakeRbLang::C end
-			
+
 			s = buildMgr.settings.getSettings(
-				(MakeRb::SettingsKey[:language => lang, :builder => self, :toolchain => MakeRbCCxx.tc_gcc] + specialisations))
-			flags = s[:clFlags] || []
+				(MakeRb::SettingsKey[:language => lang, :builder => self, :toolchain => MakeRbCCxx.tc_gcc] + sumSpecialisations))
 			prefix = (s[:clPrefix]) || ("")
-			includes = (s[:includeDirs] || []).map{|inc| "-I" + buildMgr.effective(inc).to_s }
 			
 			[prefix + tool, "-c"] +
 				sources.select{ |s| !s.is_a?(MakeRb::ImplicitSrc) }.map{|s| s.buildMgr.effective(s.filename).to_s } +
-					flags + includes
+					GCC.getFlags(s, @buildMgr)
+		end
+		def GCC.getFlags(s,mgr = nil)
+			flags = s[:clFlags] || []
+			includes = (s[:includeDirs] || []).map{|inc| "-I" + (if(mgr == nil) then inc else mgr.effective(inc) end).to_s }
+			
+			flags + includes
 		end
 		def buildDo
 			targets.each { |t| t.makePath }
@@ -97,11 +100,8 @@ module MakeRbCCxx
 				lang = if(cxx) then MakeRbLang::Cxx else MakeRbLang::C end
 				
 				s = buildMgr.settings.getSettings(
-					MakeRb::SettingsKey[:language => lang, :builder => self, :toolchain => MakeRbCCxx.tc_gcc] + specialisations)
+					MakeRb::SettingsKey[:language => lang, :builder => self, :toolchain => MakeRbCCxx.tc_gcc] + sumSpecialisations)
 				
-						
-				
-				flags = (s[:ldFlags] || []) + (s[:libraryFiles] || []).map { |f| @buildMgr.effective(f).to_s }
 				prefix = s[:clPrefix] || ""
 				
 				ldScript = sources.find { |s| s.is_a?(MakeRbBinary::LinkerScript) }
@@ -121,15 +121,25 @@ module MakeRbCCxx
 					[]
 				end + ["-o", targets[0].buildMgr.effective(targets[0].filename).to_s] +
 					before + sources.select{ |s| !s.is_a?(MakeRb::ImplicitSrc) && !s.is_a?(MakeRbBinary::LinkerScript) }.map{|s| s.buildMgr.effective(s.filename).to_s } + after +
-						ldScript + flags
+						ldScript + GCCLinker.getFlags(s,@buildMgr)
 			end
+		end
+		def GCCLinker.getFlags(s,mgr=nil)
+			(s[:ldFlags] || []) + ((s[:libraryFiles] || []).map { |lib|
+				if(lib.is_a?(MakeRbExt::ShippedLibRef))
+					(if(mgr == nil) then lib.name else mgr.effective(lib.name) end).to_s
+				else
+					MakeRb.findFile(lib.name, s[:SysLibPaths] || [], s[:libRefNaming] || []).to_s
+				end
+			})
 		end
 	end
 	# Represents a toolchain - i.e. compiler, assembler, linker
 	class ClToolchain
-		attr_reader :compiler, :assembler, :linker, :depgen, :name
-		def initialize(n, cl, as, ld, dg)
+		attr_reader :compiler, :desc, :assembler, :linker, :depgen, :name
+		def initialize(n, d, cl, as, ld, dg)
 			@name = n
+			@desc = d
 			@compiler = cl
 			@assembler = as
 			@linker = ld
@@ -139,7 +149,7 @@ module MakeRbCCxx
 	# The GCC toolchain
 	# @return [ClToolchain]
 	def MakeRbCCxx.tc_gcc
-		@@tc_gcc ||= ClToolchain.new("GNU Compiler Collection", GCC, GCC, GCCLinker, GCCDepGen)
+		@@tc_gcc ||= ClToolchain.new("gcc", "GNU Compiler Collection", GCC, GCC, GCCLinker, GCCDepGen)
 	end
 	# Hash of toolchains
 	# @return [Hash]

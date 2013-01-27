@@ -51,7 +51,7 @@ module MakeRb
 		end
 		# @return [Platform] The platform we are currently running on.
 		def self.native()
-			@@native ||= (@@platforms.find {|key,pf| pf.running? }[1] ||
+			@@native ||= (platforms.find {|key,pf| pf.running? }[1] ||
 				raise("Could not determine the current platform. This is a missing feature in make.rb. Please fix or report"))
 		end
 		# Creates a new platform which has the current one as parent.
@@ -142,6 +142,10 @@ module MakeRb
 						), MakeRbCCxx.tc_gcc)
 				}
 				Platform.new("linux-x86", SettingsMatrix.new(
+					MakeRb::SettingsKey[:staticLinking => true] =>
+						MakeRb::Settings[ :libRefNaming => [ /^(\.a)$/, /^(\.o)$/ ]],
+					MakeRb::SettingsKey[:staticLinking => false] =>
+						MakeRb::Settings[ :libRefNaming => /^(\.so)$/ ],
 					MakeRb::SettingsKey[:toolchain => MakeRbCCxx.tc_gcc, :resourceClass => MakeRbBinary::StaticLibrary] =>
 						MakeRb::Settings[ :fileExt => ".a" ],
 					MakeRb::SettingsKey[:toolchain => MakeRbCCxx.tc_gcc, :resourceClass => MakeRbBinary::DynLibrary] =>
@@ -154,13 +158,17 @@ module MakeRb
 				}
 
 				Platform.new("windows-x86", SettingsMatrix.new(
+					MakeRb::SettingsKey[:staticLinking => true] =>
+						MakeRb::Settings[ :libRefNaming => [ /^(?<!\.dll)(\.a)$/, /^(\.o)$/, /^(\.lib)$/, /^(\.dll\.a)$/, /^(\.dll)$/ ] ],
+					MakeRb::SettingsKey[:staticLinking => false] =>
+						MakeRb::Settings[ :libRefNaming => [ /^(\.dll)$/, /^(\.dll\.a)$/, /^(\.a)$/, /^(\.lib)$/, /^(\.o)$/ ] ],
 					MakeRb::SettingsKey[:toolchain => MakeRbCCxx.tc_gcc, :resourceClass => MakeRbBinary::StaticLibrary] =>
-						MakeRb::Settings[ :fileExt => ".lib" ],
+						MakeRb::Settings[ :fileExt => ".a" ],
 					MakeRb::SettingsKey[:toolchain => MakeRbCCxx.tc_gcc, :resourceClass => MakeRbBinary::DynLibrary] =>
 						MakeRb::Settings[ :fileExt => ".dll" ],
 					MakeRb::SettingsKey[:toolchain => MakeRbCCxx.tc_gcc, :resourceClass => MakeRbBinary::Executable] =>
 						MakeRb::Settings[ :fileExt => ".exe" ],
-					MakeRb::SettingsKey[] => MakeRb::Settings[ :nullFile => "NUL", :mecPaths => Proc.new { [Pathname.new(ENV['APPDATA']) + "mec", Pathname.new(ENV['ProgramFiles']) + "mec"] } ]
+					MakeRb::SettingsKey[] => MakeRb::Settings[ :nullFile => "NUL", :mecPaths => lambda { [Pathname.new(ENV['APPDATA']) + "mec", Pathname.new(ENV['SystemDrive'] + "\\mec")] } ]
 				), nil, MakeRbCCxx.tc_gcc, /cygwin|mswin|mingw|bccwin|wince|emx/, @@platforms)
 				@@platforms["native"] = Platform.native
 				@@platforms

@@ -9,7 +9,7 @@
 ### Installing
 Obtain the source via git, build the gem, and install it:
 
-	git clone git://minecraft.niklas.2g2s.de:50002/make.rb
+	git clone git://games.2g2s.de:50002/make.rb
 	gem build make.rb.gemspec
 	gem install make.rb
 

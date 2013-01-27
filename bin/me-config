@@ -1,0 +1,38 @@
+#!/usr/bin/env ruby
+
+require 'make.rb'
+require 'trollop'
+
+opts = Trollop::options {
+	opt :cflags, 'Output the C/C++ compiler flags.', :default => false
+	opt :libs, 'Output the linker flags, including libraries.', :default => false
+	opt :platform, 'Specify the platform to output the flags for.', :default => 'native'
+	opt :toolchain, 'Select the compiler toolchain for which the flags will be given', :default => MakeRb::Platform.native.defToolchain.name
+}
+
+platform = MakeRb::Platform.get(opts[:platform])
+tc = MakeRbCCxx.toolchains[opts[:toolchain]] || raise("Toolchain `#{opts[:toolchain]}' not found")
+key = MakeRb::SettingsKey[:toolchain => tc, :platform => platform, :language => MakeRbLang::C]
+
+# puts "Using platform #{platform.name} and toolchain #{tc.desc}"
+
+settings = MakeRb::SettingsMatrix.build
+
+out = []
+ext = MakeRbExt::ExtManager.new(settings)
+pkgs = ARGV.each { |name|
+	lib = ext.autoload(name)
+#	puts "Library found #{lib.name}"
+	
+	k = key + MakeRb::SettingsKey[:libraries => lib.latest.call(settings, key)]
+#	p k
+	s = settings.getSettings(k)
+	if(!s[:support])
+		raise "Library `#{name}' doesn't support the given specialisations (platform, toolchain)"
+	end
+#	p s
+	if(opts[:cflags]) then out.concat(tc.compiler.getFlags(s)) end
+	if(opts[:libs]) then out.concat(tc.linker.getFlags(s)) end
+}
+
+puts out.join(" ")

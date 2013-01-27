@@ -30,6 +30,17 @@ module MakeRbBinary
 	end
 	# An executable binary, e.g. an .exe on Windows.
 	class Executable < LinkedFile
+		# See {MakeRb::Resource#destSpecialisations}
+		def destSpecialisations
+			MakeRb::SettingsKey[:staticLinking => false] + super
+		end
+	end
+	# Statically linked executable
+	class StaticExecutable < LinkedFile
+		# See {MakeRb::Resource#destSpecialisations}
+		def destSpecialisations
+			MakeRb::SettingsKey[:staticLinking => true] + super
+		end
 	end
 	# A builder that links object files and libraries into new libraries or executables.
 	class Linker < MakeRb::Builder

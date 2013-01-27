@@ -240,7 +240,7 @@ module MakeRb
 			}
 
 			@settings = SettingsMatrix.build # the global settings blob. this has to come *after* querying (and possibly building) the platform objects.
-			@mec = MakeRbExt::ExtManager.new(self)
+			@mec = MakeRbExt::ExtManager.new(@settings)
 			
 			if(@verbose)
 				puts "Running on platform #{Platform.native.name}"
@@ -331,10 +331,9 @@ module MakeRb
 			p = if(p.is_a?(Pathname)) then p else Pathname.new(p) end
 			if(p.absolute?) then p else @root + p end
 		end
-		
 		# Returns the {SettingsMatrix#getSettings settings} for the platform we are currently running on
 		def nativeSettings
-			settings.getSettings({:platform => Platform.native})
+			settings.nativeSettings
 		end
 	end
 	# TODO doc
@@ -499,8 +498,6 @@ class MakeRbConv
 				mkRes(r.dest[i], spec, *dparam[i])
 			end
 		}
-		spec = src.inject(spec) { |old,obj| old+obj.srcSpecialisations }
-		spec = dest.inject(spec) { |old,obj| old+obj.destSpecialisations }
 
 		libs = (options[:libs] || [])
 		if(!libs.is_a?(Array)) then libs = [libs] end

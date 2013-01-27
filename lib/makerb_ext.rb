@@ -7,19 +7,19 @@ require 'set'
 module MakeRbExt
 	# Manages loading MEC data from files
 	class ExtManager
-		attr_reader :dirpaths, :buildMgr, :loaded
-		# param [{MakeRb::BuildMgr}] mgr
-		def initialize(mgr)
-			@buildMgr = mgr
+		attr_reader :dirpaths, :settings, :loaded
+		# param [{MakeRb::SettingsMagrix}] settings_
+		def initialize(settings_)
+			@settings = settings_
 			@loaded = []
 			@modules = {}
+			nativePaths = @settings.nativeSettings[:mecPaths].call()
 			@dirpaths ||= ((ENV['MAKERB_EC_PATH'] || "").split(";").map{|p| Pathname.new(p) } +
-				@buildMgr.nativeSettings[:mecPaths].call()).uniq
+				nativePaths).uniq
 		end
 		# Loads MEC files whose names begin with 'name'
 		# @param [String] name
 		def load(name)
-			name.downcase!
 			files = []
 			@dirpaths.each { |dp|
 				if(dp.directory?)
@@ -33,37 +33,53 @@ module MakeRbExt
 				end
 			}
 			files.each { |file|
-				if(!@loaded.include?(file))
-					@loaded << file
-#					puts "loading #{file}"
-					descname = ExtManager.getClassname(file.sub_ext("")) + "Desc"
-					filename = file.to_s
-					last = $mec_mgr
-	#				p filename
-	#				p MakeRbExt.constants
-	
-					$mec_mgr = self
-					require(filename)
-					$mec_mgr = last
-					
-	#				p filename
-	#				p MakeRbExt.constants
-					desc = begin
-						MakeRbExt.const_get(descname)
-					rescue NameError
-						raise("File `#{filename}' should contain a ruby module `#{descname}', but doesn't")
-					end
-					
-					desc.register(@buildMgr.settings)
-				end
+				loadFile(file)
 			}
 		end
-		# Translates a filename in snake-case notation into ruby CamelCase notation
-		# @param [String] fname a package name, e.g. gmodule-no-export-2.0
-		# @return [String] e.g. GmoduleNoExport2
-		def ExtManager.getClassname(fname)
-			a = fname.basename.to_s.gsub(/[_-]\D/) { |s| s[1].upcase }.gsub(".", "_").gsub(/\W/, "")
-			a[0].upcase + a[1..-1]
+		# Loads the MEC file specified
+		# @param [String] filename The name of the file to be loaded
+		def loadFile(filename)
+			descname = filename.basename.sub_ext("").to_s + "Desc"
+			if(!@loaded.include?(descname))
+				@loaded << descname
+
+				filename = filename.to_s
+				last = $mec_mgr
+
+				$mec_mgr = self
+				require(filename)
+				$mec_mgr = last
+				
+				desc = begin
+					MakeRbExt.const_get(descname)
+				rescue NameError
+					raise("File `#{filename}' should contain a ruby module `#{descname}', but doesn't")
+				end
+				
+				desc.register(@settings)
+			end
+		end
+		# Load all files which might contain the definition for the library with the given name
+		# @param [String] MEC name in MEC library name format, e.g. GmoduleNoExport2
+		# @return [Library] The loaded library of the given name
+		def autoload(fname)
+			lib = nil
+
+			@dirpaths.each { |dp|
+				if(dp.directory?)
+					dp.opendir { |dir|
+						dir.each { |f|
+							if(f[0...name.length] == fname)
+								loadFile(dp + fname)
+								if(MakeRbExt.const_defined?(name))
+									return MakeRbExt.const_get(name)
+								end
+							end
+						}
+					}
+				end
+			}
+			raise("No library `#{name}' found")
 		end
 	end
 	# A specific version of a {Library}. Create instances via {MakeRbExt.libver}
@@ -92,10 +108,11 @@ module MakeRbExt
 	end
 	# A library which has at least one version. Use {MakeRbExt::library} to create instances.
 	class Library
-		attr_reader :versions, :name
-		def initialize(name_)
+		attr_reader :versions, :name, :description
+		def initialize(name_, desc)
 			@versions = {}
 			@name = name_
+			@description = desc
 		end
 		# Allows to use e.g. LibraryInstance >= [2,4,7], returns an appropriate {LibProxyProc}
 		# @return [LibProxyProc]
@@ -104,11 +121,9 @@ module MakeRbExt
 				ver.respond_to?(meth) && ver.send(meth,*args)
 			}
 		end
-		# TODO fix doc
-		# Returns a block ({LibProxyProc}) which should get passed in a {MakeRb::SettingsMatrix}, a {MakeRb::SettingsKey}
-		# and a ruby Set. This block will fill the set with a version of this library (and its dependencies) which
-		# satisfies the condition(s) given via the 'block' parameter, and also supports the given
-		# specialisation ({MakeRb::SettingsKey}). If no such library is found, it will throw an exception
+		# Returns a block ({LibProxyProc}) which should get passed in a {MakeRb::SettingsMatrix} and a {MakeRb::SettingsKey}.
+		# This block will return a version of this library which satisfies the condition(s) given via the 'block' parameter,
+		# and also supports the given specialisation ({MakeRb::SettingsKey}). If no such library is found, it will throw an exception
 		# @return [LibProxyProc]
 		def where(&block)
 			LibProxyProc.new { |matrix,key|
@@ -146,10 +161,11 @@ module MakeRbExt
 	
 	# Define a library. If there's already a library with this name, does nothing.
 	# @param [Symbol] name the library name, in CamelCase notation - will define a ruby constant MakeRbExt::name. e.g. GmoduleNoExport2
+	# @param [String] desc Optional textual library description
 	# @return [Library] the created (or already existing) library
-	def MakeRbExt.library(name)
+	def MakeRbExt.library(name, desc = "")
 		if(!MakeRbExt.const_defined?(name))
-			MakeRbExt.const_set(name, Library.new(name))
+			MakeRbExt.const_set(name, Library.new(name, desc))
 		end
 		MakeRbExt.const_get(name)
 	end
@@ -159,5 +175,28 @@ module MakeRbExt
 		names.each { |name|
 			$mec_mgr.load(name)
 		}
+	end
+	# For usage in MEC files - represents a reference to a library.
+	class LibRef
+		attr_accessor :name
+		def initialize(n)
+			@name = n
+		end
+		def ==(other)
+			name == other.name
+		end
+	end
+	# Represents a reference to a system (compiler, stdlib, OS) library. The name should be a simple string.
+	class SysLibRef < LibRef
+		def to_s
+			"SysLibRef.new(" + name.inspect + ")"
+		end
+	end
+	# Represents a reference to a library belonging to a MEC package (preferably the package which creates the instance). The name should
+	# be a Pathname.
+	class ShippedLibRef < LibRef
+		def to_s
+			"ShippedLibRef.new(Pathname.new(" + name.cleanpath.to_s.inspect + "))"
+		end
 	end
 end

@@ -76,6 +76,31 @@ module MakeRb
 	def MakeRb.ensureNewline(str)
 		str.empty? ? "" : (str[-1] == "\n" ? str : str + "\n")
 	end
+	# Searches for a file starting with 'name', whose extensions satisfy the given regexp's in the given directories. The file which matches
+	# the highest ordered regex is returned.
+	# @param [String] name The file's name prefix
+	# @param [Array] dirs Array of Pathnames
+	# @param [Array] regex Array of Regexps.
+	# @return [Pathname] Name of the file
+	def findFile(name, dirs, regex)
+		dirs.each { |dn|
+			if(dn.directory?)
+				dn.opendir { |dir|
+					regex.each { |r|
+						dir.each { |ff|
+							if(ff != "." && ff != ".." && ff[0...name.length] == name)
+								ext = ff[name.length..-1]
+								if(ext =~ r)
+									return dn + ff
+								end
+							end
+						}
+					}
+				}
+			end
+		}
+		raise "No file `#{name}' found"
+	end
 	# Represents a data set to be used by builders. In most cases, the derived class {FileRes} will be used. This
 	# is the abstract form, which could also represent e.g. a database.
 	class Resource
@@ -307,6 +332,10 @@ module MakeRb
 			
 			mgr << self
 		end
+		# Returns the specialisations to be used by the builder - includes the builder specific ones combined with the source/target specific ones
+		def sumSpecialisations
+			@sumSpecialisations ||= @targets.inject(@sources.inject(@specialisations) { |old,obj| old+obj.srcSpecialisations }) { |old,obj| old+obj.destSpecialisations }
+		end
 		# Tells the {BuildMgr} whether this {Builder} should be re-executed because any targets are outdated.
 		# Calls {Resource#rebuild?} on every source-target combination.
 		# @return [Boolean]
@@ -373,7 +402,7 @@ module MakeRb
 			@buildBlock = block
 		end
 		def buildDo
-			@buildBlock.call(sources, targets, specialisations)
+			@buildBlock.call(sources, targets, sumSpecialisations)
 		end
 	end
 end

@@ -7,24 +7,6 @@ module MakeRb
 		(parent == nil || parent == child) ||
 			(child.respond_to?(:parentSettings) && MakeRb.isParentSetting(parent, child.parentSettings))
 	end
-	class Library
-		attr_accessor :used
-		def initialize
-			@used = false
-		end
-	end
-	class SystemLibrary < Library
-		attr_reader :name
-		def initialize(name)
-			@name = name
-		end
-	end
-	class LibraryFile < Library
-		attr_reader :path
-		def initialize(path_)
-			@path = path_
-		end
-	end
 	class Settings < Hash
 		def +(otherS)
 			if(otherS == nil) then self
@@ -33,6 +15,11 @@ module MakeRb
 					Settings.merge(own, other)
 				}
 			end
+		end
+		def add(otherS)
+			merge!(otherS) { |key,own,other|
+				Settings.merge(own, other)
+			}
 		end
 		def Settings.merge(own, other)
 			if(own.respond_to?(:inheritSettings))
@@ -50,7 +37,7 @@ module MakeRb
 					own
 				end
 			elsif(own.is_a?(Proc) && other.is_a?(Proc))
-				Proc.new { Settings.merge(own, other) }
+				lambda { Settings.merge(own.call(), other.call()) }
 			else
 				raise "Error on merging settings: Don't know how to merge #{own.class.name} and #{other.class.name}"
 			end
@@ -73,33 +60,8 @@ module MakeRb
 				}
 			end
 		end
-#		def flattenDeps
-#			copy = clone
-#			copy.each { |key, val|
-#				if(val.is_a?(Array))
-#					ary = val.clone
-#					puts "Settings1: " + ary.map {|l| l.name}.join(", ")
-#					set = Set.new(ary)
-#					
-#					ary.each { |el|
-#						if(el.respond_to?(:settingDeps))
-#							deps = el.settingDeps
-#							deps.each { |dep|
-#								if(!set.include?(dep))
-#									ary << dep
-#									set << dep
-#								end
-#							}
-#						end
-#					}
-#					copy[key] = ary
-#					puts "Settings2: " + ary.map {|l| l.name}.join(", ")
-#				end
-#			}
-#			copy
-#		end
 	end
-	class SettingsMatrix < Settings
+	class SettingsMatrix
 		attr_reader :hash
 		def initialize(ihash = {})
 			@hash = ihash
@@ -117,6 +79,13 @@ module MakeRb
 				own + other
 			})
 		end
+		def add(otherS)
+			@hash.merge!(otherS.hash) { |key, own, other|
+				own.add(other)
+				own
+			}
+			@cache.clear
+		end
 		def libSupports?(lib, keyhash)
 			keys = keyhash.keys
 			keyhash[:libraries] = lib
@@ -128,7 +97,6 @@ module MakeRb
 			s = set[:support]
 			if(s == nil) then false else s end
 		end
-		
 		def SettingsMatrix.build
 			s = nil
 			MakeRb::Platform.platforms.map { |key, value|
@@ -139,6 +107,10 @@ module MakeRb
 		end
 		def to_s
 			"SettingsMatrix###{object_id} " + hash.to_s
+		end
+		# Returns the {SettingsMatrix#getSettings settings} for the platform we are currently running on
+		def nativeSettings
+			getSettings({:platform => Platform.native})
 		end
 		def getSettings(keyhash) # O(2^keyhash.size)
 	#			puts keyhash
