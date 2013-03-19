@@ -374,8 +374,8 @@ end
 class MakeRbConv
 	# A rule defined by {#rule rule}
 	class Rule
-		attr_reader :name, :src, :dest, :builder, :specialisations, :block, :settings, :libs
-		def initialize(name_, src_,dest_,builder_,spec,block_,settings_,libs_)
+		attr_reader :name, :src, :dest, :builder, :specialisations, :block, :settings, :libs, :settingsM
+		def initialize(name_, src_,dest_,builder_,spec,block_,settings_,libs_,sm_)
 			@name = name_
 			@src = src_
 			@dest = dest_
@@ -384,6 +384,7 @@ class MakeRbConv
 			@block = block_
 			@settings = settings_
 			@libs = libs_
+			@settingsM = sm_
 		end
 	end
 	attr_reader :buildMgr
@@ -416,6 +417,8 @@ class MakeRbConv
 	#   * {MakeRb::Settings} instances, to specify extra settings to apply to the generated {MakeRb::Builder}
 	#   * {MakeRb::SettingsKey} instances, to specialize what settings will be used for the generated {MakeRb::Builder}s.
 	#   * {MakeRbExt::LibProxyProc} instances (results of the {MakeRbExt::Library#where} method), to specify the libraries to be used
+	#   * Zero or one {MakeRb::SettingsMatrix} instance which will be added to the main settings matrix, with the :builder key set
+	#     to the generated {MakeRb::Builder} instance
 	# @param [Proc] block If given, the block will be called upon invocation of {#dep dep} and can return an Array of {MakeRb::Builder}'s,
 	#   instead of using a builder class or keyword in the rest parameter.
 	# @return [Rule]
@@ -424,6 +427,7 @@ class MakeRbConv
 		builder = nil
 		settings = MakeRb::Settings[]
 		libs = []
+		sm = nil
 
 		i = 4
 		rest.each { |param|
@@ -435,6 +439,8 @@ class MakeRbConv
 				settings = settings + param
 			elsif(param.is_a?(MakeRbExt::LibProxyProc))
 				libs << param
+			elsif(param.is_a?(MakeRb::SettingsMatrix))
+				sm = param
 			else
 				raise "rule: Don't know how to use parameter #{i} of type #{param.class}: " + param.inspect
 			end
@@ -451,7 +457,7 @@ class MakeRbConv
 		end
 		if (builder == nil && block == nil) then raise("No builder and no block specified!") end
 
-		@rules[name] = Rule.new(name, src, dest, builder, spec, block, settings, libs)
+		@rules[name] = Rule.new(name, src, dest, builder, spec, block, settings, libs, sm)
 	end
 
 	# Uses the given parameters to create {MakeRb::Resource resource}s and {MakeRb::Builder builder}s of the classes
@@ -524,11 +530,18 @@ class MakeRbConv
 		else
 			r.settings
 		end
-		if(builders != nil && settings != nil && !settings.empty?)
+		if(builders != nil)
 			if(!builders.is_a?(Array)) then builders = [builders] end
-			builders.each { |builder|
-				@buildMgr.settings[MakeRb::SettingsKey[:builder => builder]]= settings
-			}
+			if(settings != nil && !settings.empty?)
+				builders.each { |builder|
+					@buildMgr.settings[MakeRb::SettingsKey[:builder => builder]]= settings
+				}
+			end
+			if(r.settingsM != nil)
+				builders.each { |builder|
+					@buildMgr.settings.addSpecialized(r.settingsM, MakeRb::SettingsKey[:builder => builder])
+				}
+			end
 		end
 		dest
 	end

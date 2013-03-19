@@ -67,6 +67,11 @@ module MakeRb
 			@hash = ihash
 			@cache = {}
 		end
+		def self.[](h)
+			nh = {}
+			h.each { |k,v| nh[SettingsKey[k]] = Settings[v]; }
+			self.new(nh)
+		end
 		def []=(key,val)
 			@cache.clear
 			@hash[key] = val
@@ -83,6 +88,18 @@ module MakeRb
 			@hash.merge!(otherS.hash) { |key, own, other|
 				own.add(other)
 				own
+			}
+			@cache.clear
+		end
+		def addSpecialized(otherS, addkey)
+			otherS.hash.each { |k,v|
+				nk = addkey+k
+				s = hash[nk]
+				if(s == nil)
+					hash[nk] = v
+				else
+					s.add(v)
+				end
 			}
 			@cache.clear
 		end
