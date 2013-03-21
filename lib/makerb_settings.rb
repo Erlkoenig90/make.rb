@@ -30,6 +30,8 @@ module MakeRb
 				own + other
 			elsif(own.is_a?(String) && other.is_a?(String))
 				own
+			elsif(own.is_a?(Hash) && other.is_a?(Hash))
+				own.merge(other) { |k,w,o| Settings.merge(w,o)}
 			elsif((own == true || own == false) && (other == true || other == false))  # why is there no "Boolean" class?
 				if(own != other)
 					raise "Error on merging settings: Two different booleans found (own=#{own}, other=#{other})"

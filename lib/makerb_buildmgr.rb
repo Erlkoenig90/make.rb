@@ -238,6 +238,8 @@ module MakeRb
 				# Get debug flag
 				key[:debug] = opts[:debug] || opts["#{type}-debug"] || false
 			}
+#			@builddir = Pathname.new(opts[:builddir]) + (if opts[:debug] then "debug" else "release" end) +
+#				(typeKeys.map {|t,k| t.to_s+"="+k[:platform].name }.join(","))
 
 			@settings = SettingsMatrix.build # the global settings blob. this has to come *after* querying (and possibly building) the platform objects.
 			@mec = MakeRbExt::ExtManager.new(@settings)

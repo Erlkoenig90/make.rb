@@ -10,10 +10,11 @@ module MakeRb
 		attr_accessor :parentSettings
 		# @param [String] n The platform's (unique) name
 		# @param [SettingsMatrix] s Settings specific for this platform
+		# @param [Platform] p Parent platform
 		# @param [MakeRbCCxx::Toolchain] tc the default toolchain for this platform
-		# @param [Hash] rh A hash to save this platform in, used internally
 		# @param [Regexp] regex A regular expression that should match on RUBY_PLATFORM if, and only if, we are currently
 		#	running on that platform (or nil if make.rb can't run on that platform)
+		# @param [Hash] rh A hash to save this platform in, used internally
 		# @param [Proc] block This block will be called at the end of initialize and be passed this instance. Allows
 		#   for more elegant definition of nested platforms
 		def initialize(n, s = nil, p = nil, tc = nil, regex = nil, rh = nil, &block)
@@ -124,22 +125,36 @@ module MakeRb
 					if(name == "native") then @@platforms["native"] = Platform.native
 					else nil end
 				}
-				Platform.new("ARM", nil, nil, nil, nil, @@platforms) { |pfArm|
-					pfArm.newChild("stm32f4", SettingsMatrix.new(
-						MakeRb::SettingsKey[:toolchain => MakeRbCCxx.tc_gcc, :language => MakeRbLang::C] =>
-							MakeRb::Settings[:clFlags => ["-mthumb", "-mcpu=cortex-m4", "-mfpu=fpv4-sp-d16", "-mfloat-abi=hard", "-DSTM32F4XX", "-DARM_MATH_CM4", "-D__FPU_PRESENT=1", "-ffunction-sections", "-fdata-sections", "-nostdlib"]],
-						MakeRb::SettingsKey[:toolchain => MakeRbCCxx.tc_gcc, :language => MakeRbLang::Cxx] =>
-							MakeRb::Settings[:clFlags => ["-fno-exceptions", "-fno-rtti"]],
-						MakeRb::SettingsKey[:toolchain => MakeRbCCxx.tc_gcc] =>
-							MakeRb::Settings[:ldFlags => ["-mthumb", "-mcpu=cortex-m4", "-mfpu=fpv4-sp-d16", "-mfloat-abi=hard", "-static", "-Wl,-cref,-u,Reset_Handler", "-Wl,--gc-sections", "-Wl,--defsym=malloc_getpagesize_P=0x1000", "-ffunction-sections", "-fdata-sections"]],
-
-						MakeRb::SettingsKey[:toolchain => MakeRbCCxx.tc_gcc, :resourceClass => MakeRbBinary::StaticLibrary] =>
-							MakeRb::Settings[ :fileExt => ".a" ],
-						MakeRb::SettingsKey[:toolchain => MakeRbCCxx.tc_gcc, :resourceClass => MakeRbBinary::DynLibrary] =>
-							MakeRb::Settings[ :fileExt => ".so" ],
-						MakeRb::SettingsKey[:toolchain => MakeRbCCxx.tc_gcc, :resourceClass => MakeRbBinary::Executable] =>
-							MakeRb::Settings[ :fileExt => "" ]
-						), MakeRbCCxx.tc_gcc)
+				Platform.new("ARMv7M", SettingsMatrix[
+					{:toolchain => MakeRbCCxx.tc_gcc, :language => MakeRbLang::C} => {:clFlags => ["-mthumb"]},
+					{:toolchain => MakeRbCCxx.tc_gcc} => {:ldFlags => ["-mthumb"], :startupCode => Pathname.new(File::expand_path("../../data/startup/gcc/ARMv7M.c", __FILE__))},
+					{:toolchain => MakeRbCCxx.tc_gcc, :resourceClass => MakeRbBinary::StaticLibrary} =>
+						{ :fileExt => ".a" },
+					{:toolchain => MakeRbCCxx.tc_gcc, :resourceClass => MakeRbBinary::DynLibrary} =>
+						{ :fileExt => ".so" },
+					{:toolchain => MakeRbCCxx.tc_gcc, :resourceClass => MakeRbBinary::Executable} =>
+						{ :fileExt => ".elf" }], nil, MakeRbCCxx.tc_gcc, nil, @@platforms) { |pfArm|
+					
+						pfArm.newChild("Cortex-M4F", SettingsMatrix[
+							{:toolchain => MakeRbCCxx.tc_gcc, :language => MakeRbLang::C} =>
+							{:clFlags => ["-mcpu=cortex-m4", "-mfpu=fpv4-sp-d16", "-mfloat-abi=hard"],
+							 :ldFlags => ["-mcpu=cortex-m4", "-mfpu=fpv4-sp-d16", "-mfloat-abi=hard"]
+							}]) { |m4f|
+							
+							mcus = ["STM32F302CB", "STM32F302CC", "STM32F302RB", "STM32F302RC", "STM32F302VB", "STM32F302VC", "STM32F303CB", "STM32F303CC", "STM32F303RB", "STM32F303RC", "STM32F303VB", "STM32F303VC", "STM32F313CC", "STM32F313RC", "STM32F313VC", "STM32F372C8", "STM32F372CB", "STM32F372CC", "STM32F372R8", "STM32F372RB", "STM32F372RC", "STM32F372V8", "STM32F372VB", "STM32F372VC", "STM32F373C8", "STM32F373CB", "STM32F373CC", "STM32F373R8", "STM32F373RB", "STM32F373RC", "STM32F373V8", "STM32F373VB", "STM32F373VC", "STM32F383CC", "STM32F383RC", "STM32F383VC", "STM32F405OE", "STM32F405OG", "STM32F405RG", "STM32F405VG", "STM32F405ZG", "STM32F407IE", "STM32F407IG", "STM32F407VE", "STM32F407VG", "STM32F407ZE", "STM32F407ZG", "STM32F415OG", "STM32F415RG", "STM32F415VG", "STM32F415ZG", "STM32F417IE", "STM32F417IG", "STM32F417VE", "STM32F417VG", "STM32F417ZE", "STM32F417ZG", "STM32F427IG", "STM32F427II", "STM32F427VG", "STM32F427VI", "STM32F427ZG", "STM32F427ZI", "STM32F429BG", "STM32F429BI", "STM32F429IG", "STM32F429II", "STM32F429NG", "STM32F429NI", "STM32F429VG", "STM32F429VI", "STM32F429ZG", "STM32F429ZI", "STM32F437IG", "STM32F437II", "STM32F437VG", "STM32F437VI", "STM32F437ZG", "STM32F437ZI", "STM32F439BG", "STM32F439BI", "STM32F439IG", "STM32F439II", "STM32F439NG", "STM32F439NI", "STM32F439VG", "STM32F439VI", "STM32F439ZG", "STM32F439ZI"]
+							mcus.each { |n|
+								b = {{} => {:cppDefines => {n => "1", n[0..-3] => "1"}}}
+								MakeRbCCxx.toolchains.each { |tcname,tc|
+									ext = (MakeRbLang.settings.getSettings(MakeRb::SettingsKey[:toolchain => tc, :resourceClass => MakeRbBinary::LinkerScript])[:fileExt]) || ""
+									lp = Pathname.new(File::expand_path("../../data/linkerscript/#{tcname}/#{n}#{ext}", __FILE__))
+									if(lp.file?)
+#										puts "found linkerscript #{lp.to_s}"
+										b[{:toolchain => tc}] = {:linkerScript => lp}
+									end
+									m4f.newChild(n, MakeRb::SettingsMatrix[b])
+								}
+							}
+						}
 				}
 				Platform.new("linux-x86", SettingsMatrix.new(
 					MakeRb::SettingsKey[:staticLinking => true] =>

@@ -44,10 +44,12 @@ module MakeRbCCxx
 			s = buildMgr.settings.getSettings(
 				(MakeRb::SettingsKey[:language => lang, :builder => self, :toolchain => MakeRbCCxx.tc_gcc] + sumSpecialisations))
 			prefix = (s[:clPrefix]) || ("")
+			cpp = (s[:cppDefines] || {}).map{|n,v| "-D#{n}=#{v}"}
+			
 			
 			[prefix + tool, "-c"] +
 				sources.select{ |s| !s.is_a?(MakeRb::ImplicitSrc) }.map{|s| s.buildMgr.effective(s.filename).to_s } +
-					GCC.getFlags(s, @buildMgr)
+					GCC.getFlags(s, @buildMgr) + cpp
 		end
 		def GCC.getFlags(s,mgr = nil)
 			flags = s[:clFlags] || []
@@ -104,8 +106,23 @@ module MakeRbCCxx
 				
 				prefix = s[:clPrefix] || ""
 				
+					
+				startup = []
 				ldScript = sources.find { |s| s.is_a?(MakeRbBinary::LinkerScript) }
-				ldScript = if(ldScript == nil) then [] else ["-T", ldScript.buildMgr.effective(ldScript.filename).to_s] end
+				ldScript = if(ldScript != nil)
+					ldScript.buildMgr.effective(ldScript.filename)
+				else
+					c = s[:startupCode]
+					startup = if(c == nil)
+						[]
+					elsif(cxx)
+						["-x","c",c.to_s]
+					else
+						[c.to_s]
+					end
+					s[:linkerScript]
+				end
+				ldScript = if(ldScript == nil) then [] else ["-T", ldScript.to_s] end
 				
 				if(s[:circularLookup])
 					before = ["-Wl,--start-group"]
@@ -119,9 +136,9 @@ module MakeRbCCxx
 					["-shared"]
 				else
 					[]
-				end + ["-o", targets[0].buildMgr.effective(targets[0].filename).to_s] +
-					before + sources.select{ |s| !s.is_a?(MakeRb::ImplicitSrc) && !s.is_a?(MakeRbBinary::LinkerScript) }.map{|s| s.buildMgr.effective(s.filename).to_s } + after +
-						ldScript + GCCLinker.getFlags(s,@buildMgr)
+				end + ["-o", targets[0].buildMgr.effective(targets[0].filename).to_s] + before +
+						sources.select{ |s| !s.is_a?(MakeRb::ImplicitSrc) && !s.is_a?(MakeRbBinary::LinkerScript) }.map{|s| s.buildMgr.effective(s.filename).to_s } +
+						startup + ldScript + after + GCCLinker.getFlags(s,@buildMgr)
 			end
 		end
 		def GCCLinker.getFlags(s,mgr=nil)
@@ -176,13 +193,16 @@ module MakeRbLang
 	end
 	# Various language-specific settings
 	def MakeRbLang.settings
-		MakeRb::SettingsMatrix.new(
-			{{:toolchain => MakeRbCCxx.tc_gcc, :debug => true, :language => C} => MakeRb::Settings[:clFlags => ["-g"]],
-				{:toolchain => MakeRbCCxx.tc_gcc, :resourceClass => MakeRbCCxx::CFile} => MakeRb::Settings[ :fileExt => ".c" ], 
-				{:toolchain => MakeRbCCxx.tc_gcc, :resourceClass => MakeRbCCxx::CxxFile} => MakeRb::Settings[ :fileExt => ".cc" ], 
-				{:toolchain => MakeRbCCxx.tc_gcc, :resourceClass => MakeRbBinary::AsmFile} => MakeRb::Settings[ :fileExt => ".s" ], 
-				{:toolchain => MakeRbCCxx.tc_gcc, :resourceClass => MakeRbBinary::ObjFile} => MakeRb::Settings[ :fileExt => ".o" ],
-				{:toolchain => MakeRbCCxx.tc_gcc, :resourceClass => MakeRbBinary::LinkerScript} => MakeRb::Settings[ :fileExt => ".ld" ]},
-		)
+		@@langSettings ||= MakeRb::SettingsMatrix[
+			{:toolchain => MakeRbCCxx.tc_gcc, :language => C, :debug => true} => {:clFlags => ["-g"]},
+			{:toolchain => MakeRbCCxx.tc_gcc, :language => C, :removeUnusedFunctions => true} => {:clFlags => ["-ffunction-sections", "-fdata-sections"], :ldFlags => ["-Wl,--gc-sections"]},
+			{:toolchain => MakeRbCCxx.tc_gcc, :language => Cxx, :exceptions => false} => {:clFlags => ["-fno-exceptions"]},
+			{:toolchain => MakeRbCCxx.tc_gcc, :language => Cxx, :rtti => false} => {:clFlags => ["-fno-rtti"]},
+			{:toolchain => MakeRbCCxx.tc_gcc, :resourceClass => MakeRbCCxx::CFile} => { :fileExt => ".c" }, 
+			{:toolchain => MakeRbCCxx.tc_gcc, :resourceClass => MakeRbCCxx::CxxFile} => { :fileExt => ".cc" }, 
+			{:toolchain => MakeRbCCxx.tc_gcc, :resourceClass => MakeRbBinary::AsmFile} => { :fileExt => ".s" }, 
+			{:toolchain => MakeRbCCxx.tc_gcc, :resourceClass => MakeRbBinary::ObjFile} => { :fileExt => ".o" },
+			{:toolchain => MakeRbCCxx.tc_gcc, :resourceClass => MakeRbBinary::LinkerScript} => { :fileExt => ".ld" },
+		]
 	end
 end
