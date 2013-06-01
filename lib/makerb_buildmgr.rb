@@ -9,13 +9,14 @@ module MakeRb
 
 		# Represents a running builder
 		class Job
-			attr_accessor :pid, :pipe, :out, :builder, :cmd
-			def initialize(cmd_, pid_, pipe_, builder_)
+			attr_accessor :pid, :pipe, :out, :builder, :cmd, :strCmd
+			def initialize(cmd_, pid_, pipe_, builder_, strCmd_)
 				@pid = pid_
 				@pipe = pipe_
 				@out = ""
 				@builder = builder_
 				@cmd = cmd_
+				@strCmd = strCmd_
 			end
 
 			def read(force = false)
@@ -82,7 +83,7 @@ module MakeRb
 						builder.lock
 						res = builder.build
 						if(res != nil)
-							proc = Job.new(res[0], res[1], res[2], builder)
+							proc = Job.new(res[0], res[1], res[2], builder, res [3])
 							#							puts MakeRb.buildCmd(proc.cmd)
 							procs << proc
 						else
@@ -140,7 +141,7 @@ module MakeRb
 							end
 							@exitcode = 1
 						else
-							puts MakeRb.buildCmd(proc.cmd)
+							puts proc.strCmd
 							$stdout.write MakeRb.ensureNewline(proc.out)
 							proc.builder.unlock
 						end

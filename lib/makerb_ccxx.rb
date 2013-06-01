@@ -151,22 +151,34 @@ module MakeRbCCxx
 			})
 		end
 	end
+	# "objdump" disassembler
+	class GCCDisasm < MakeRbBinary::Disassembler
+		include MakeRb::StdoutBuilder
+		def buildDo
+			s = buildMgr.settings.getSettings(
+				MakeRb::SettingsKey[:builder => self, :toolchain => MakeRbCCxx.tc_gcc] + sumSpecialisations)
+			prefix = s[:clPrefix] || ""
+				
+			[prefix + "objdump", "-d", "-t", "-C"] + sources.map { |s| s.buildMgr.effective(s.filename).to_s }
+		end
+	end
 	# Represents a toolchain - i.e. compiler, assembler, linker
 	class ClToolchain
-		attr_reader :compiler, :desc, :assembler, :linker, :depgen, :name
-		def initialize(n, d, cl, as, ld, dg)
+		attr_reader :compiler, :desc, :assembler, :linker, :depgen, :name, :disassembler
+		def initialize(n, d, cl, as, ld, dg, da)
 			@name = n
 			@desc = d
 			@compiler = cl
 			@assembler = as
 			@linker = ld
 			@depgen = dg
+			@disassembler = da
 		end
 	end
 	# The GCC toolchain
 	# @return [ClToolchain]
 	def MakeRbCCxx.tc_gcc
-		@@tc_gcc ||= ClToolchain.new("gcc", "GNU Compiler Collection", GCC, GCC, GCCLinker, GCCDepGen)
+		@@tc_gcc ||= ClToolchain.new("gcc", "GNU Compiler Collection", GCC, GCC, GCCLinker, GCCDepGen, GCCDisasm)
 	end
 	# Hash of toolchains
 	# @return [Hash]
@@ -200,7 +212,7 @@ module MakeRbLang
 			{:toolchain => MakeRbCCxx.tc_gcc, :language => Cxx, :rtti => false} => {:clFlags => ["-fno-rtti"]},
 			{:toolchain => MakeRbCCxx.tc_gcc, :resourceClass => MakeRbCCxx::CFile} => { :fileExt => ".c" }, 
 			{:toolchain => MakeRbCCxx.tc_gcc, :resourceClass => MakeRbCCxx::CxxFile} => { :fileExt => ".cc" }, 
-			{:toolchain => MakeRbCCxx.tc_gcc, :resourceClass => MakeRbBinary::AsmFile} => { :fileExt => ".s" }, 
+			{:toolchain => MakeRbCCxx.tc_gcc, :resourceClass => MakeRbBinary::AsmFile} => { :fileExt => ".S" }, 
 			{:toolchain => MakeRbCCxx.tc_gcc, :resourceClass => MakeRbBinary::ObjFile} => { :fileExt => ".o" },
 			{:toolchain => MakeRbCCxx.tc_gcc, :resourceClass => MakeRbBinary::LinkerScript} => { :fileExt => ".ld" },
 		]

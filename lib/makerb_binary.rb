@@ -4,6 +4,7 @@
 module MakeRbBinary
 	# An Assembler source
 	class AsmFile < MakeRb::FileRes
+		include MakeRb::Generated;
 	end
 	# An object file, i.e. the result of compiling (but not linking) a C source.
 	class ObjFile < MakeRb::FileRes
@@ -47,5 +48,7 @@ module MakeRbBinary
 	end
 	# A file to configure a linker's behaviour (e.g. .ld files when using GCC)
 	class LinkerScript < MakeRb::FileRes
+	end
+	class Disassembler < MakeRb::Builder
 	end
 end

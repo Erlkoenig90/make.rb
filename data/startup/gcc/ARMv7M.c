@@ -10,7 +10,7 @@ extern int main (void);
 
 void __attribute__((naked)) Reset_Handler () {
 	uint32_t* target = &_sdata;
-	uint32_t* src = &_sidata;
+	const uint32_t* src = &_sidata;
 	while (target != &_edata) {
 		*target = *src;
 		target++; src++;

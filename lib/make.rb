@@ -65,10 +65,11 @@ module MakeRb
 	# Escapes the given array of command line arguments into a string suitable for shell execution.
 	# Is the inverse of {parseFlags}
 	# @param [Array] args
+	# @param String Where to redirect stdout
 	# @return [String]
-	def MakeRb.buildCmd(args)
+	def MakeRb.buildCmd(args, redirStdout = nil)
 		# TODO - escaping here
-		args.join(" ")
+		args.join(" ") + if(redirStdout == nil) then "" else " > #{redirStdout}" end
 	end
 	# Adds a newline to the end of the given string, if it has none and is not empty
 	# @param [String] str
@@ -302,6 +303,11 @@ module MakeRb
 	class GeneratedFileRes < FileRes
 		include Generated
 	end
+	# Marker mixin for builders; if included, the Builder class will attempt to redirect output of the 
+	# builder program to the first output file which is a FileRes. Useful for builder aplications
+	# that always output to stdout.
+	module StdoutBuilder
+	end
 	# Base class for builders. Derived classes should represent types of external programs that perform a
 	# certain task (e.g. compiling C sources, like {MakeRbCCxx::Compiler}), and provide a general interface
 	# for that (via the {SettingsMatrix}). These classes should then be used as base classes for concrete
@@ -363,10 +369,19 @@ module MakeRb
 #				puts "spawning " + cmd.join(" ")
 				if(cmd != nil)
 					r, w = IO.pipe
-					pid = spawn(*cmd, :out=>w, :err=>w, r=>:close, :in=>@buildMgr.nativeSettings[:nullFile])
+					out,strCmd = if(self.class.include?(StdoutBuilder))
+						t = targets.find { |t| t.is_a?(FileRes) } ||
+							raise("Builder class #{self.class.name} requires (includes module StdoutBuilder) to redirect stdout to target FileRes, but no FileRes target supplied!")
+						f = t.buildMgr.effective(t.filename).to_s
+						[f,MakeRb.buildCmd(cmd, f)]
+					else
+						[w,MakeRb.buildCmd(cmd)]
+					end
+					
+					pid = spawn(*cmd, :out=>out, :err=>w, r=>:close, :in=>@buildMgr.nativeSettings[:nullFile])
 					w.close
 					
-					[cmd, pid, r]
+					[cmd, pid, r, strCmd]
 				else
 					nil
 				end
