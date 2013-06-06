@@ -52,8 +52,8 @@ module MakeRb
 		end
 		# @return [Platform] The platform we are currently running on.
 		def self.native()
-			@@native ||= (platforms.find {|key,pf| pf.running? }[1] ||
-				raise("Could not determine the current platform. This is a missing feature in make.rb. Please fix or report"))
+			@@native ||= (platforms.find {|key,pf| pf.running? } ||
+				raise("Could not determine the current platform. This is a missing feature in make.rb. Please fix or report"))[1]
 		end
 		# Creates a new platform which has the current one as parent.
 		# @param [String] n The platform's (unique) name
@@ -121,8 +121,12 @@ module MakeRb
 			if(@@platforms != nil)
 				@@platforms
 			else
-				@@platforms = Hash.new {|name|
-					if(name == "native") then @@platforms["native"] = Platform.native
+				@@platforms = Hash.new {|h,name|
+					if(!name.is_a?(String))
+						raise "Invalid key for Platform.platforms[]: #{name.class.name}"
+					end
+					if(name == "native")
+						Platform.native
 					else nil end
 				}
 				Platform.new("ARMv7M", SettingsMatrix[
@@ -168,7 +172,7 @@ module MakeRb
 					MakeRb::SettingsKey[:toolchain => MakeRbCCxx.tc_gcc, :resourceClass => MakeRbBinary::Executable] =>
 						MakeRb::Settings[ :fileExt => "" ],
 					MakeRb::SettingsKey[] => MakeRb::Settings[ :nullFile => "/dev/null", :mecPaths => Proc.new { [Pathname.new(Dir.home)+".mec", Pathname.new("/usr/lib/mec")] } ]
-				), nil, MakeRbCCxx.tc_gcc, /x86_linux/, @@platforms) { |pfLinux|
+				), nil, MakeRbCCxx.tc_gcc, /(x86|i[3456]86)[_-]linux/, @@platforms) { |pfLinux|
 					pfLinux.newChild("linux-x86_64", nil, nil, /x86_64-linux/)
 				}
 
@@ -185,7 +189,6 @@ module MakeRb
 						MakeRb::Settings[ :fileExt => ".exe" ],
 					MakeRb::SettingsKey[] => MakeRb::Settings[ :nullFile => "NUL", :mecPaths => lambda { [Pathname.new(ENV['APPDATA']) + "mec", Pathname.new(ENV['SystemDrive'] + "\\mec")] } ]
 				), nil, MakeRbCCxx.tc_gcc, /cygwin|mswin|mingw|bccwin|wince|emx/, @@platforms)
-				@@platforms["native"] = Platform.native
 				@@platforms
 			end
 		end
