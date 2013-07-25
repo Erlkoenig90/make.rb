@@ -39,7 +39,7 @@ module MakeRb
 			end
 		end
 
-		attr_reader :jobs, :settings, :builders, :resources, :reshash, :builddir, :root, :mec, :typeKeys
+		attr_reader :jobs, :settings, :builders, :resources, :reshash, :builddir, :root, :mec, :typeKeys, :force
 
 		def initialize
 			@builders = []
@@ -52,6 +52,7 @@ module MakeRb
 			@builddir = nil
 			@verbose = false
 			@mec = nil
+			@force = false
 		end
 
 		# Builds the given targets.
@@ -121,7 +122,8 @@ module MakeRb
 						begin
 							Process.waitpid(proc.pid)
 						end while (!($?.exited?))
-
+						
+						proc.builder.targets.each { |t| t.forceRebuilt = true }
 						if($?.exitstatus != 0)
 							puts "Command failed:"
 							puts MakeRb.buildCmd(proc.cmd)
@@ -182,7 +184,7 @@ module MakeRb
 						raise ex
 					end
 					if(found == nil)
-						if(target.builder.rebuild?)
+						if((@force && !target.forceRebuilt) || target.builder.rebuild?)
 							found = target.builder
 						end
 					end
@@ -214,6 +216,7 @@ module MakeRb
 				opt :keep_going, 'Don\'t abort on error, but run as many tasks as possible', :default => false, :short => '-k'
 				opt :builddir, 'Store generated files in this directory', :default => 'build'
 				opt :verbose, 'Output some information', :default => false, :short => '-v'
+				opt :force, 'Force rebuilding of all targets', :default => false, :short => '-f'
 
 				namespaceDeObfuscator.each { |type,key|
 					opt "#{type}-debug", "Enable debugging for the `#{type}\' platform.", :default => false
@@ -227,6 +230,7 @@ module MakeRb
 			@root = Pathname.new(File.dirname($0))
 			@builddir = Pathname.new(opts[:builddir]) + (if opts[:debug] then "debug" else "release" end)
 			@verbose = opts[:verbose]
+			@force = opts[:force]
 
 			typeKeys.each { |type, key|
 				# Get the platform

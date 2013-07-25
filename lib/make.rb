@@ -105,12 +105,13 @@ module MakeRb
 	# Represents a data set to be used by builders. In most cases, the derived class {FileRes} will be used. This
 	# is the abstract form, which could also represent e.g. a database.
 	class Resource
-		attr_accessor :builder, :buildMgr, :specialisations
+		attr_accessor :builder, :buildMgr, :specialisations, :forceRebuilt
 		# @param [BuildMgr] mgr
 		def initialize(mgr, spec)
 			@builder = nil
 			@buildMgr = mgr
 			@specialisations = spec
+			@forceRebuilt = false
 			mgr << self
 		end
 		# To be overwritten by derived classes. Should return a string which identifies this resource uniquely.
