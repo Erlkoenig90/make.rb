@@ -1,0 +1,3 @@
+[submodule "libs/chipdef"]
+	path = libs/chipdef
+	url = ssh://root@games.2g2s.de/mnt/data/git/chipdef.git
