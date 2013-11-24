@@ -6,6 +6,9 @@ module MakeRbBinary
 	class AsmFile < MakeRb::FileRes
 		include MakeRb::Generated;
 	end
+	# An assembler listing, not neccessarily suitable for re-assembling
+	class AsmListingFile < AsmFile
+	end
 	# An object file, i.e. the result of compiling (but not linking) a C source.
 	class ObjFile < MakeRb::FileRes
 		include MakeRb::Generated;

@@ -299,6 +299,11 @@ module MakeRb
 			ext = src.buildMgr.settings.getSettings(MakeRb::SettingsKey[:resourceClass => klass] + src.specialisations)[:fileExt] || ""
 			self.new(src.buildMgr, src.specialisations, src.filename.sub_ext(ext), *args)
 		end
+		def FileRes.autoFromData(buildMgr, spec, filename, *args)
+			klass = self
+			ext = buildMgr.settings.getSettings(MakeRb::SettingsKey[:resourceClass => klass] + spec)[:fileExt] || ""
+			self.new(buildMgr, spec, filename.sub_ext(ext), *args)
+		end 
 	end
 	# A {FileRes} that includes the {Generated} mixin.
 	class GeneratedFileRes < FileRes

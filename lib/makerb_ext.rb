@@ -32,6 +32,9 @@ module MakeRbExt
 					}
 				end
 			}
+			if(files.empty?)
+				raise "No suitable MEC file for \"#{name}\" found!"
+			end
 			files.each { |file|
 				loadFile(file)
 			}
@@ -94,8 +97,8 @@ module MakeRbExt
 #			puts "Deps: " + deps.map{|l| l.name }.join(",")
 		end
 		def settingDeps(matrix, key)
-			if ((deps = (matrix.getSettings({:mecLibrary => self})[:mecDependencies])) != nil)
-				deps.call(matrix,key).map { |p| p.call(matrix,key) }
+			if ((deps = (matrix.getSettings(SettingsKey[:mecLibrary => self])[:mecDependencies])) != nil)
+				deps.call(matrix, key).map { |p| p.call(matrix, key) }
 			else
 				[]
 			end
@@ -132,6 +135,7 @@ module MakeRbExt
 				end
 				srcloc = block.source_location
 				srcloc = if(srcloc != nil) then srcloc[0] + ":" + srcloc[1].to_s else "<unknown>" end
+
 				(@versions.select { |ver,lib|
 					matrix.libSupports?(lib, key) && block.call(ver,lib)
 				}.max(){ |a,b| a[0] <=> b[0] } || raise("No version of library `#{@name}' satisfying condition from #{srcloc} found: #{@versions}"))[1]
@@ -149,9 +153,14 @@ module MakeRbExt
 	# @param [Library] lib The corresponding {Library} instance
 	# @param [Hash] options A hash with options:
 	#   * :parent => An object to inherit settings from, see {MakeRb::SettingsMatrix} about inheriting settings
+	#   * :class => The class of which to create an instance; should derive from {LibVersion}. If not specified or nil, LibVersion will be assumed. 
 	def MakeRbExt.libver(name, lib, options={})
 		if(!MakeRbExt.const_defined?(name))
-			inst = LibVersion.new(options[:version] || [], name.to_s, options[:parent])
+			klass = LibVersion
+			if(options.include?(:class) && options[:class] != nil)
+				klass = options[:class]
+			end
+			inst = klass.new(options[:version] || [], name.to_s, options[:parent])
 			MakeRbExt.const_set(name, inst)
 			
 			lib.versions[inst.version] = inst

@@ -1,11 +1,25 @@
 #!/usr/bin/env ruby
 
+require 'makerb_settings'
+
 module MakeRbCCxx
 	# A C source file
 	class CFile < MakeRb::FileRes
+		def srcSpecialisations
+			MakeRb::SettingsKey[:language => MakeRbLang::C]
+		end
 	end
 	# A C++ source file
 	class CxxFile < MakeRb::FileRes
+		def srcSpecialisations
+			MakeRb::SettingsKey[:language => MakeRbLang::Cxx]
+		end
+	end
+	# A C++11 source file
+	class Cxx11File < CxxFile
+		def srcSpecialisations
+			MakeRb::SettingsKey[:language => MakeRbLang::Cxx11]
+		end
 	end
 	# An object file, result of compiling a C file
 	class CObjFile < MakeRbBinary::ObjFile
@@ -27,6 +41,9 @@ module MakeRbCCxx
 		def oTarget
 			@oTarget ||= targets.find { |t| t.is_a?(MakeRbBinary::ObjFile) }
 		end
+		def aTarget
+			@aTarget ||= targets.find { |t| t.is_a?(MakeRbBinary::AsmListingFile) }
+		end
 		def depTarget
 			@depTarget ||= targets.find { |t| t.is_a?(MakeRb::DepMakeFile) }
 		end
@@ -42,7 +59,7 @@ module MakeRbCCxx
 			lang = if(cxx) then MakeRbLang::Cxx else MakeRbLang::C end
 
 			s = buildMgr.settings.getSettings(
-				(MakeRb::SettingsKey[:language => lang, :builder => self, :toolchain => MakeRbCCxx.tc_gcc] + sumSpecialisations))
+				(MakeRb::SettingsKey[:builder => self, :toolchain => MakeRbCCxx.tc_gcc] + sumSpecialisations))
 			prefix = (s[:clPrefix]) || ("")
 			cpp = (s[:cppDefines] || {}).map{|n,v| "-D#{n}=#{v}"}
 			
@@ -59,7 +76,8 @@ module MakeRbCCxx
 		end
 		def buildDo
 			targets.each { |t| t.makePath }
-			baseCmd + ["-o", oTarget.buildMgr.effective(oTarget.filename).to_s]
+			baseCmd + ["-o", oTarget.buildMgr.effective(oTarget.filename).to_s] +
+				if(aTarget == nil) then [] else ["-Wa,-aln=" + aTarget.buildMgr.effective(aTarget.filename).to_s] end
 		end
 	end
 	class GCCDepGen < GCC
@@ -108,12 +126,21 @@ module MakeRbCCxx
 				
 					
 				startup = []
+				isrVector = []
 				ldScript = sources.find { |s| s.is_a?(MakeRbBinary::LinkerScript) }
 				ldScript = if(ldScript != nil)
 					ldScript.buildMgr.effective(ldScript.filename)
 				else
 					c = s[:startupCode]
 					startup = if(c == nil)
+						[]
+					elsif(cxx)
+						["-x","c",c.to_s]
+					else
+						[c.to_s]
+					end
+					c = s[:isrVector]
+					isrVector = if(c == nil)
 						[]
 					elsif(cxx)
 						["-x","c",c.to_s]
@@ -138,7 +165,7 @@ module MakeRbCCxx
 					[]
 				end + ["-o", targets[0].buildMgr.effective(targets[0].filename).to_s] + before +
 						sources.select{ |s| !s.is_a?(MakeRb::ImplicitSrc) && !s.is_a?(MakeRbBinary::LinkerScript) }.map{|s| s.buildMgr.effective(s.filename).to_s } +
-						startup + ldScript + after + GCCLinker.getFlags(s,@buildMgr)
+						startup + isrVector + ldScript + after + GCCLinker.getFlags(s,@buildMgr)
 			end
 		end
 		def GCCLinker.getFlags(s,mgr=nil)
@@ -198,6 +225,12 @@ module MakeRbLang
 			C
 		end
 	end
+	# C++11
+	module Cxx11
+		def Cxx11.parentSettings
+			Cxx
+		end
+	end
 	module Ruby
 	end
 	# Assembler
@@ -210,9 +243,11 @@ module MakeRbLang
 			{:toolchain => MakeRbCCxx.tc_gcc, :language => C, :removeUnusedFunctions => true} => {:clFlags => ["-ffunction-sections", "-fdata-sections"], :ldFlags => ["-Wl,--gc-sections"]},
 			{:toolchain => MakeRbCCxx.tc_gcc, :language => Cxx, :exceptions => false} => {:clFlags => ["-fno-exceptions"]},
 			{:toolchain => MakeRbCCxx.tc_gcc, :language => Cxx, :rtti => false} => {:clFlags => ["-fno-rtti"]},
+			{:toolchain => MakeRbCCxx.tc_gcc, :language => Cxx11} => {:clFlags => ["-std=c++11"]},
 			{:toolchain => MakeRbCCxx.tc_gcc, :resourceClass => MakeRbCCxx::CFile} => { :fileExt => ".c" }, 
 			{:toolchain => MakeRbCCxx.tc_gcc, :resourceClass => MakeRbCCxx::CxxFile} => { :fileExt => ".cc" }, 
 			{:toolchain => MakeRbCCxx.tc_gcc, :resourceClass => MakeRbBinary::AsmFile} => { :fileExt => ".S" }, 
+			{:toolchain => MakeRbCCxx.tc_gcc, :resourceClass => MakeRbBinary::AsmListingFile} => { :fileExt => ".S" }, 
 			{:toolchain => MakeRbCCxx.tc_gcc, :resourceClass => MakeRbBinary::ObjFile} => { :fileExt => ".o" },
 			{:toolchain => MakeRbCCxx.tc_gcc, :resourceClass => MakeRbBinary::LinkerScript} => { :fileExt => ".ld" },
 		]

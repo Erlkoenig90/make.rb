@@ -62,6 +62,9 @@ module MakeRb
 				}
 			end
 		end
+		def withoutArrays
+			select { |k,v| !v.is_a?(Array) }
+		end
 	end
 	class SettingsMatrix
 		attr_reader :hash
@@ -129,31 +132,44 @@ module MakeRb
 		end
 		# Returns the {SettingsMatrix#getSettings settings} for the platform we are currently running on
 		def nativeSettings
-			getSettings({:platform => Platform.native})
+			getSettings(SettingsKey[:platform => Platform.native])
+		end
+		
+		# Flattens one dependency tree
+		# @param [Array] rdeps root dependencies
+		# @param [Hash] woArrays keyhash without any array elements
+		def resolveDep(rdeps, woArrays)
+			collected = Set[]
+			queue = rdeps.clone
+			while(!queue.empty?)
+				el = queue.first
+				if(!collected.include?(el))
+					collected << el
+					if(el.respond_to?(:settingDeps))
+						deps = el.settingDeps(self, woArrays)
+						queue.concat(deps)
+					end
+				end
+				queue.delete_at(0)
+			end
+			collected.to_a
+		end
+		
+		# Flattens dependency trees in keyhash
+		# @return Hash with resolved dependencies
+		def resolveDeps(keyhash)
+			woArrays = keyhash.withoutArrays
+			expanded = keyhash.clone
+			expanded.each { |k,v|
+				if(v.is_a?(Array))
+					expanded[k] = resolveDep(v, woArrays)
+				end
+			}
+			expanded
 		end
 		def getSettings(keyhash) # O(2^keyhash.size)
-	#			puts keyhash
 			@cache.fetch(keyhash) {
-				woArrays = keyhash.select {|k,v| !v.is_a?(Array) }
-				expanded = keyhash.clone
-				expanded.each { |k,v|
-					if(v.is_a?(Array))
-						collected = Set[]
-						queue = v.clone
-						while(!queue.empty?)
-							el = queue.first
-							if(!collected.include?(el))
-								collected << el
-								if(el.respond_to?(:settingDeps))
-									deps = el.settingDeps(self,woArrays)
-									queue.concat(deps)
-								end
-							end
-							queue.delete_at(0)
-						end
-						expanded[k] = collected.to_a
-					end
-				}
+				expanded = resolveDeps(keyhash)
 				
 				keys = expanded.keys
 				@cache[keyhash] = (getSettingsR(expanded,keys,0) || {})

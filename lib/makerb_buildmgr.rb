@@ -381,9 +381,8 @@ end
 class MakeRbConv
 	# A rule defined by {#rule rule}
 	class Rule
-		attr_reader :name, :src, :dest, :builder, :specialisations, :block, :settings, :libs, :settingsM
-		def initialize(name_, src_,dest_,builder_,spec,block_,settings_,libs_,sm_)
-			@name = name_
+		attr_reader :src, :dest, :builder, :specialisations, :block, :settings, :libs, :settingsM
+		def initialize(src_,dest_,builder_,spec,block_,settings_,libs_,sm_)
 			@src = src_
 			@dest = dest_
 			@builder = builder_
@@ -398,7 +397,6 @@ class MakeRbConv
 
 	def initialize(mgr)
 		@buildMgr = mgr
-		@rules = {}
 		@tprefix = nil
 
 		mgr.typeKeys.each { |type,key|
@@ -409,7 +407,6 @@ class MakeRbConv
 	end
 
 	# Defines a rule for processing targets, whose exact files are to be defined via {#dep dep}.
-	# @param [String] name The new rule's name.
 	# @param [Array] src An array of classes (ruby Class objects) derived from {MakeRb::Resource}. Instances of these
 	#   classes will be created using the parameters given to {#dep dep} and will be used as sources to the defined
 	#   builder. Can be left empty when specifying explicit {MakeRb::Resource}'s to {#dep dep}
@@ -429,7 +426,7 @@ class MakeRbConv
 	# @param [Proc] block If given, the block will be called upon invocation of {#dep dep} and can return an Array of {MakeRb::Builder}'s,
 	#   instead of using a builder class or keyword in the rest parameter.
 	# @return [Rule]
-	def rule(name,src,dest,*rest,&block)
+	def rule(src,dest,*rest,&block)
 		spec = MakeRb::SettingsKey[]
 		builder = nil
 		settings = MakeRb::Settings[]
@@ -444,7 +441,7 @@ class MakeRbConv
 				spec = spec + param
 			elsif(param.is_a?(MakeRb::Settings))
 				settings = settings + param
-			elsif(param.is_a?(MakeRbExt::LibProxyProc))
+			elsif(param.is_a?(MakeRbExt::LibProxyProc) || param.is_a?(MakeRbExt::LibVersion))
 				libs << param
 			elsif(param.is_a?(MakeRb::SettingsMatrix))
 				sm = param
@@ -464,12 +461,12 @@ class MakeRbConv
 		end
 		if (builder == nil && block == nil) then raise("No builder and no block specified!") end
 
-		@rules[name] = Rule.new(name, src, dest, builder, spec, block, settings, libs, sm)
+		Rule.new(src, dest, builder, spec, block, settings, libs, sm)
 	end
 
 	# Uses the given parameters to create {MakeRb::Resource resource}s and {MakeRb::Builder builder}s of the classes
 	# specified via the given rule, connects them appropriately and feeds them to the {MakeRb::BuildMgr}.
-	# @param [String] name the name of the rule to be used
+	# @param [Rule] r The rule to be used, as returned by {rule #rule}
 	# @param [Array] sparam an array of arrays of arguments to pass to the constructors of the {MakeRb::Resource resource}s
 	#   used as soucres to the builder. If the constructors take only one argument, sparam can also be an Array of the arguments.
 	#   If there is only one source whose constructor takes only one argument, sparam can be this only argument.
@@ -486,8 +483,7 @@ class MakeRbConv
 	#   * :block => If the rule has both a block and a {MakeRb::Builder} class specified, the array passed via :block
 	#     will be passed to the rule's block as additional parameters.
 	# @return [Array] the array of generated targets, can be used for the sparam parameter of subsequent {#dep dep} calls.
-	def dep(name, sparam, dparam = nil, options = {})
-		r = @rules[name] || raise("No rule `#{name}' defined!")
+	def dep(r, sparam, dparam = nil, options = {})
 		spec = r.specialisations
 		if(options.include?(:spec))
 			spec = spec + options[:spec]
@@ -514,7 +510,8 @@ class MakeRbConv
 
 		libs = (options[:libs] || [])
 		if(!libs.is_a?(Array)) then libs = [libs] end
-		spec[:libraries] = (r.libs + libs).map { |lib|  lib.call(@buildMgr.settings, spec) }.uniq
+		spec[:libraries] = (r.libs + libs).map { |lib|
+			if(lib.is_a?(MakeRbExt::LibVersion)) then lib else lib.call(@buildMgr.settings, spec) end }.uniq
 		
 
 		if(r.builder != nil)
@@ -571,6 +568,23 @@ class MakeRbConv
 			@buildMgr.mec.load(name)
 		}
 	end
+	
+	# Add resources & rules from MEC Libraries; calls that libraries .extres functions with appropriate arguments
+	# @param libs The {LibVersion} instances use; need to have an "extres" method, obtained via calling a LibProxyProc or e.g. by {MakeRbConv#rlib}
+	# @param [Pathname] subdir Subdirectory in build directory to build targets in, or nil
+	# @return Resources exported from that library (exact semantics depend on that library); for example for linking in object files produced by a library deployed in source form
+	def extres(spec, subdir, *libs)
+		res = []
+		if(!subdir.is_a?(Pathname))
+			subdir = Pathname.new(subdir)
+		end
+		libs.each { |lib|
+			if(lib.respond_to?(:extres))
+				res.concat(lib.extres(buildMgr, spec, subdir))
+			end
+		}
+		res
+	end
 
 	# Finds a {MakeRb::Resource Resource} by its name.
 	def res(name)
@@ -588,6 +602,14 @@ class MakeRbConv
 		else
 			klass.new(buildMgr, spec, *args)
 		end
+	end
+
+	# Resolves library proxies; searches for libraries satisfying the given conditions and their dependencies.
+	# @param [MakeRb::SettingsKey] spec Specializations to apply for resolving
+	# @param [MakeRbExt::LibProxyProc] libproxies proxies, e.g. as returned by LibName.latest
+	# @return [Array] Resolved instances
+	def rlib(spec, *libproxies)
+		buildMgr.settings.resolveDep(libproxies.map { |p| p.call(@buildMgr.settings, spec) }, spec.withoutArrays)
 	end
 
 	# FileRes instances defined within the given block will get "dir" prefixed
