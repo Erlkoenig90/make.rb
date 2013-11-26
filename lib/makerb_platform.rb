@@ -129,8 +129,8 @@ module MakeRb
 						Platform.native
 					else nil end
 				}
-				Platform.new("ARMv7") { |pfARMv7|
-					Platform.new("ARMv7M", SettingsMatrix[
+				Platform.new("ARMv7", nil, nil, nil, nil, @@platforms) { |pfARMv7|
+					pfARMv7.newChild("ARMv7M", SettingsMatrix[
 						{:toolchain => MakeRbCCxx.tc_gcc, :language => MakeRbLang::C} => {:clFlags => ["-mthumb"]},
 						{:toolchain => MakeRbCCxx.tc_gcc} => {:ldFlags => ["-mthumb"], :startupCode => Pathname.new(File::expand_path("../../data/startup/gcc/ARMv7M.c", __FILE__))},
 						{:toolchain => MakeRbCCxx.tc_gcc, :resourceClass => MakeRbBinary::StaticLibrary} =>
@@ -138,15 +138,15 @@ module MakeRb
 						{:toolchain => MakeRbCCxx.tc_gcc, :resourceClass => MakeRbBinary::DynLibrary} =>
 							{ :fileExt => ".so" },
 						{:toolchain => MakeRbCCxx.tc_gcc, :resourceClass => MakeRbBinary::Executable} =>
-							{ :fileExt => ".elf" }], nil, MakeRbCCxx.tc_gcc, nil, @@platforms) { |pfArm|
+							{ :fileExt => ".elf" }], MakeRbCCxx.tc_gcc) { |pfARMv7M|
 
-							m3 = pfArm.newChild("Cortex-M3", SettingsMatrix[
+							m3 = pfARMv7M.newChild("Cortex-M3", SettingsMatrix[
 								SettingsKey[:toolchain => MakeRbCCxx.tc_gcc, :language => MakeRbLang::C] =>
 								{:clFlags => ["-mcpu=cortex-m3", "-mfloat-abi=soft"],
 								 :ldFlags => ["-mcpu=cortex-m3", "-mfloat-abi=soft"]}
 							])
 							
-							m4f = pfArm.newChild("Cortex-M4F", SettingsMatrix[
+							m4f = pfARMv7M.newChild("Cortex-M4F", SettingsMatrix[
 							SettingsKey[:toolchain => MakeRbCCxx.tc_gcc, :language => MakeRbLang::C] =>
 							{:clFlags => ["-mcpu=cortex-m4", "-mfpu=fpv4-sp-d16", "-mfloat-abi=hard"],
 							 :ldFlags => ["-mcpu=cortex-m4", "-mfpu=fpv4-sp-d16", "-mfloat-abi=hard"]
