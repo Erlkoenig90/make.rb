@@ -192,7 +192,7 @@ module MakeRb
 						MakeRb::Settings[ :fileExt => ".so" ],
 					MakeRb::SettingsKey[:toolchain => MakeRbCCxx.tc_gcc, :resourceClass => MakeRbBinary::Executable] =>
 						MakeRb::Settings[ :fileExt => "" ],
-					MakeRb::SettingsKey[] => MakeRb::Settings[ :nullFile => "/dev/null", :mecPaths => Proc.new { [Pathname.new(Dir.home)+".mec", Pathname.new("/usr/lib/mec")] } ]
+					MakeRb::SettingsKey[] => MakeRb::Settings[ :nullFile => "/dev/null", :mecPaths => lambda { [Pathname.new(Dir.home)+".mec", Pathname.new("/usr/lib/mec")] } ]
 				), nil, MakeRbCCxx.tc_gcc, /(x86|i[3456]86)[_-]linux/, @@platforms) { |pfLinux|
 					pfLinux.newChild("linux-x86_64", nil, nil, /x86_64-linux/)
 				}
@@ -208,7 +208,7 @@ module MakeRb
 						MakeRb::Settings[ :fileExt => ".dll" ],
 					MakeRb::SettingsKey[:toolchain => MakeRbCCxx.tc_gcc, :resourceClass => MakeRbBinary::Executable] =>
 						MakeRb::Settings[ :fileExt => ".exe" ],
-					MakeRb::SettingsKey[] => MakeRb::Settings[ :nullFile => "NUL", :mecPaths => lambda { [Pathname.new(ENV['APPDATA']) + "mec", Pathname.new(ENV['SystemDrive'] + "\\mec")] } ]
+					MakeRb::SettingsKey[] => MakeRb::Settings[ :nullFile => "NUL", :mecPaths => lambda { [Pathname.new(Dir.home)+".mec", Pathname.new(ENV['APPDATA']) + "mec", Pathname.new(ENV['SystemDrive'] + "\\mec")] } ]
 				), nil, MakeRbCCxx.tc_gcc, /cygwin|mswin|mingw|bccwin|wince|emx/, @@platforms)
 				@@platforms
 			end
