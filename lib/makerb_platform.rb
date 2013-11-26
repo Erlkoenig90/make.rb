@@ -140,33 +140,43 @@ module MakeRb
 						{:toolchain => MakeRbCCxx.tc_gcc, :resourceClass => MakeRbBinary::Executable} =>
 							{ :fileExt => ".elf" }], nil, MakeRbCCxx.tc_gcc, nil, @@platforms) { |pfArm|
 
-							pfArm.newChild("Cortex-M4F", SettingsMatrix[
-								{:toolchain => MakeRbCCxx.tc_gcc, :language => MakeRbLang::C} =>
-								{:clFlags => ["-mcpu=cortex-m4", "-mfpu=fpv4-sp-d16", "-mfloat-abi=hard"],
-								 :ldFlags => ["-mcpu=cortex-m4", "-mfpu=fpv4-sp-d16", "-mfloat-abi=hard"]
-								}]) { |m4f|
+							m3 = pfArm.newChild("Cortex-M3", SettingsMatrix[
+								SettingsKey[:toolchain => MakeRbCCxx.tc_gcc, :language => MakeRbLang::C] =>
+								{:clFlags => ["-mcpu=cortex-m3", "-mfloat-abi=soft"],
+								 :ldFlags => ["-mcpu=cortex-m3", "-mfloat-abi=soft"]}
+							])
 							
-								mcus = ["STM32F302CB", "STM32F302CC", "STM32F302RB", "STM32F302RC", "STM32F302VB", "STM32F302VC", "STM32F303CB", "STM32F303CC", "STM32F303RB", "STM32F303RC", "STM32F303VB", "STM32F303VC", "STM32F313CC", "STM32F313RC", "STM32F313VC", "STM32F372C8", "STM32F372CB", "STM32F372CC", "STM32F372R8", "STM32F372RB", "STM32F372RC", "STM32F372V8", "STM32F372VB", "STM32F372VC", "STM32F373C8", "STM32F373CB", "STM32F373CC", "STM32F373R8", "STM32F373RB", "STM32F373RC", "STM32F373V8", "STM32F373VB", "STM32F373VC", "STM32F383CC", "STM32F383RC", "STM32F383VC", "STM32F405OE", "STM32F405OG", "STM32F405RG", "STM32F405VG", "STM32F405ZG", "STM32F407IE", "STM32F407IG", "STM32F407VE", "STM32F407VG", "STM32F407ZE", "STM32F407ZG", "STM32F415OG", "STM32F415RG", "STM32F415VG", "STM32F415ZG", "STM32F417IE", "STM32F417IG", "STM32F417VE", "STM32F417VG", "STM32F417ZE", "STM32F417ZG", "STM32F427IG", "STM32F427II", "STM32F427VG", "STM32F427VI", "STM32F427ZG", "STM32F427ZI", "STM32F429BG", "STM32F429BI", "STM32F429IG", "STM32F429II", "STM32F429NG", "STM32F429NI", "STM32F429VG", "STM32F429VI", "STM32F429ZG", "STM32F429ZI", "STM32F437IG", "STM32F437II", "STM32F437VG", "STM32F437VI", "STM32F437ZG", "STM32F437ZI", "STM32F439BG", "STM32F439BI", "STM32F439IG", "STM32F439II", "STM32F439NG", "STM32F439NI", "STM32F439VG", "STM32F439VI", "STM32F439ZG", "STM32F439ZI"]
-								mcus.each { |n|
-									b = {{} => {:cppDefines => {n => "1", n[0..-3] => "1"}}}
-									MakeRbCCxx.toolchains.each { |tcname,tc|
-										ext = (MakeRbLang.settings.getSettings(MakeRb::SettingsKey[:toolchain => tc, :resourceClass => MakeRbBinary::LinkerScript])[:fileExt]) || ""
-										lp = Pathname.new(File::expand_path("../../data/linkerscript/#{tcname}/#{n}#{ext}", __FILE__))
-										h = nil
-										if(lp.file?)
-	#										puts "found linkerscript #{lp.to_s}"
-											h = {:linkerScript => lp}
-										end
-										ip = P athname.new(File::expand_path("../../data/isr-vector/#{tcname}/#{n}.c", __FILE__))
-										if(ip.file?)
-											if(h == nil) then h = {} end
-											h[:isrVector] = ip
-										end
-										if(h != nil)
-											b[{:toolchain => tc}] = h
-										end
-										m4f.newChild(n, MakeRb::SettingsMatrix[b])
-									}
+							m4f = pfArm.newChild("Cortex-M4F", SettingsMatrix[
+							SettingsKey[:toolchain => MakeRbCCxx.tc_gcc, :language => MakeRbLang::C] =>
+							{:clFlags => ["-mcpu=cortex-m4", "-mfpu=fpv4-sp-d16", "-mfloat-abi=hard"],
+							 :ldFlags => ["-mcpu=cortex-m4", "-mfpu=fpv4-sp-d16", "-mfloat-abi=hard"]
+							}])
+						
+						
+							mcus = [["STM32F407VG", m4f], ["STM32F373CC", m4f], ["LPC1758FBD80", m3]]
+							mcus.each { |name, core|
+								cpp = {name => "1"}
+								if(name[0..4] == "STM32")
+									cpp[name[0..-3]] = "1"
+								end
+								b = {{} => {:cppDefines => cpp}}
+								MakeRbCCxx.toolchains.each { |tcname,tc|
+									ext = (MakeRbLang.settings.getSettings(MakeRb::SettingsKey[:toolchain => tc, :resourceClass => MakeRbBinary::LinkerScript])[:fileExt]) || ""
+									lp = Pathname.new(File::expand_path("../../data/linkerscript/#{tcname}/#{name}#{ext}", __FILE__))
+									h = nil
+									if(lp.file?)
+#										puts "found linkerscript #{lp.to_s}"
+										h = {:linkerScript => lp}
+									end
+									ip = Pathname.new(File::expand_path("../../data/isr-vector/#{tcname}/#{name}.c", __FILE__))
+									if(ip.file?)
+										if(h == nil) then h = {} end
+										h[:isrVector] = ip
+									end
+									if(h != nil)
+										b[{:toolchain => tc}] = h
+									end
+									core.newChild(name, MakeRb::SettingsMatrix[b])
 								}
 							}
 					}

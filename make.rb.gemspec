@@ -6,7 +6,7 @@ Gem::Specification.new do |s|
   s.description = "make.rb is a build system with special support for cross-compiling and cross-platform development"
   s.authors     = ["Niklas Gürtler"]
   s.email       = 'profclonk@gmx.de'
-  s.files       = ["bin/me-config", "lib/make.rb", "lib/makerb_binary.rb", "lib/makerb_buildmgr.rb", "lib/makerb_ccxx.rb", "lib/makerb_ext.rb", "lib/makerb_misc.rb", "lib/makerb_platform.rb", "lib/makerb_settings.rb", "data/linkerscript/gcc/STM32F373CC.ld", "data/linkerscript/gcc/STM32F407VG.ld", "data/startup/gcc/ARMv7M.c"]
+  s.files       = ["lib/makerb_buildmgr.rb", "lib/makerb_misc.rb", "lib/makerb_binary.rb", "lib/make.rb", "lib/makerb_ext.rb", "lib/makerb_ccxx.rb", "lib/makerb_platform.rb", "lib/makerb_settings.rb", "data/startup/gcc/ARMv7M.c", "data/isr-vector/gcc/LPC1758FBD80.c", "data/isr-vector/gcc/STM32F407VG.c", "data/isr-vector/gcc/STM32F373CC.c", "data/linkerscript/gcc/STM32F407VG.ld", "data/linkerscript/gcc/STM32F373CC.ld", "data/linkerscript/gcc/LPC1758FBD80.ld", "bin/me-config"]
   s.bindir		= 'bin'
   s.executables = ['me-config']
   s.required_ruby_version = '>= 1.9.2'
