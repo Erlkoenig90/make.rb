@@ -138,7 +138,7 @@ module MakeRbExt
 
 				(@versions.select { |ver,lib|
 					matrix.libSupports?(lib, key) && block.call(ver,lib)
-				}.max(){ |a,b| a[0] <=> b[0] } || raise("No version of library `#{@name}' satisfying condition from #{srcloc} found: #{@versions}"))[1]
+				}.max(){ |a,b| a[0] <=> b[0] } || raise("No version of library `#{@name}' satisfying condition from #{srcloc} found.\nRequested specialization: #{key}\nAvailable versions: #{@versions}"))[1]
 			}
 		end
 		# Returns a {LibProxyProc} which gives the newest library version 

@@ -41,6 +41,9 @@ module MakeRb
 		def to_s
 			object_id.to_s + "#" + @name # + ":" + parentSettings.name
 		end
+		def inspect
+			"MakeRb.Platform.platforms[" + @name.inspect+ "]"
+		end
 		# Checks whether we are currently running on this platform
 		# @return [Boolean]
 		def running?

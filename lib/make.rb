@@ -150,6 +150,9 @@ module MakeRb
 		def match(m)
 			false
 		end
+		def to_s
+			name
+		end
 	end
 	# Identifies a {Resource} (to be used as a mixin) which can be used by {Builder}s. Provides refcounting
 	# so this {Resource} can simultaneously be used by multiple {Builder}s, by calling the {Usable#preUseDo}
@@ -296,14 +299,14 @@ module MakeRb
 		end
 		def FileRes.auto(src, *args)
 			klass = self
-			ext = src.buildMgr.settings.getSettings(MakeRb::SettingsKey[:resourceClass => klass] + src.specialisations)[:fileExt] || ""
+			ext = src.buildMgr.settings.getSettings(MakeRb::SettingsKey[:resourceClass => klass] + src.specialisations + src.srcSpecialisations )[:fileExt] || ""
 			self.new(src.buildMgr, src.specialisations, src.filename.sub_ext(ext), *args)
 		end
 		def FileRes.autoFromData(buildMgr, spec, filename, *args)
 			klass = self
 			ext = buildMgr.settings.getSettings(MakeRb::SettingsKey[:resourceClass => klass] + spec)[:fileExt] || ""
 			self.new(buildMgr, spec, filename.sub_ext(ext), *args)
-		end 
+		end
 	end
 	# A {FileRes} that includes the {Generated} mixin.
 	class GeneratedFileRes < FileRes
@@ -414,6 +417,9 @@ module MakeRb
 		# Used by {BuildMgr}
 		def unlock
 			targets.each { |t| t.unlock }
+		end
+		def to_s
+			"Builder#" + object_id.to_s
 		end
 	end
 	# A builder that calls a block for {Builder#buildDo}. Used by the convenience API.

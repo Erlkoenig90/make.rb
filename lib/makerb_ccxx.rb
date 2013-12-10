@@ -201,6 +201,12 @@ module MakeRbCCxx
 			@depgen = dg
 			@disassembler = da
 		end
+		def to_s
+			@name
+		end
+		def inspect
+			"MakeRbCCxx.toolchains[" + name.inspect + "]"
+		end
 	end
 	# The GCC toolchain
 	# @return [ClToolchain]
@@ -218,11 +224,23 @@ end
 # Provides identifiers for programming languages
 module MakeRbLang
 	module C
+		def to_s
+			"C"
+		end
+		def inspect
+			"MakeRbLang.C"
+		end
 	end
 	# C++
 	module Cxx
 		def Cxx.parentSettings
 			C
+		end
+		def to_s
+			"C++"
+		end
+		def inspect
+			"MakeRbLang.Cxx"
 		end
 	end
 	# C++11
@@ -230,11 +248,29 @@ module MakeRbLang
 		def Cxx11.parentSettings
 			Cxx
 		end
+		def to_s
+			"C++11"
+		end
+		def inspect
+			"MakeRbLang.Cxx11"
+		end
 	end
 	module Ruby
+		def to_s
+			"ruby"
+		end
+		def inspect
+			"MakeRbLang.Ruby"
+		end
 	end
 	# Assembler
 	module Asm
+		def to_s
+			"asm"
+		end
+		def inspect
+			"MakeRbLang.Asm"
+		end
 	end
 	# Various language-specific settings
 	def MakeRbLang.settings
