@@ -307,6 +307,12 @@ module MakeRb
 			ext = buildMgr.settings.getSettings(MakeRb::SettingsKey[:resourceClass => klass] + spec)[:fileExt] || ""
 			self.new(buildMgr, spec, filename.sub_ext(ext), *args)
 		end
+		def to_s
+			@filename
+		end
+		def inspect
+			self.class.name + "[" + @filename_str + "]"
+		end
 	end
 	# A {FileRes} that includes the {Generated} mixin.
 	class GeneratedFileRes < FileRes
