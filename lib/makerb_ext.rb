@@ -135,10 +135,18 @@ module MakeRbExt
 				end
 				srcloc = block.source_location
 				srcloc = if(srcloc != nil) then srcloc[0] + ":" + srcloc[1].to_s else "<unknown>" end
-
-				(@versions.select { |ver,lib|
-					matrix.libSupports?(lib, key) && block.call(ver,lib)
-				}.max(){ |a,b| a[0] <=> b[0] } || raise("No version of library `#{@name}' satisfying condition from #{srcloc} found.\nRequested specialization: #{key}\nAvailable versions: #{@versions}"))[1]
+	
+				supported = @versions.map { |ver,lib|
+					[ver, lib, matrix.libSupports?(lib, key), block.call(ver,lib)]
+				}
+				matched = supported.select { |ver, lib, support, want| support && want }
+				if(matched.empty?)
+					raise(supported.inject("No version of library `#{@name}' satisfying condition from #{srcloc} found.\nRequested specialization: #{key}\nAvailable versions:\n") { |mem,obj|
+						mem + "#{obj[0]} => #{obj [1]} - supported (#{obj[2]}), accepted (#{obj[3]})\n"
+					})
+				else
+					matched.max(){ |a,b| a[0] <=> b[0] }[1]
+				end 
 			}
 		end
 		# Returns a {LibProxyProc} which gives the newest library version 
