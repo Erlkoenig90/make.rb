@@ -275,7 +275,7 @@ module MakeRbLang
 	# Various language-specific settings
 	def MakeRbLang.settings
 		@@langSettings ||= MakeRb::SettingsMatrix[
-			{:toolchain => MakeRbCCxx.tc_gcc, :language => C, :debug => true} => {:clFlags => ["-g"]},
+			{:toolchain => MakeRbCCxx.tc_gcc, :language => C, :debug => true} => {:clFlags => ["-g"], :ldFlags => ["-g"]},
 			{:toolchain => MakeRbCCxx.tc_gcc, :language => C, :removeUnusedFunctions => true} => {:clFlags => ["-ffunction-sections", "-fdata-sections"], :ldFlags => ["-Wl,--gc-sections"]},
 			{:toolchain => MakeRbCCxx.tc_gcc, :language => Cxx, :exceptions => false} => {:clFlags => ["-fno-exceptions"]},
 			{:toolchain => MakeRbCCxx.tc_gcc, :language => Cxx, :rtti => false} => {:clFlags => ["-fno-rtti"]},
