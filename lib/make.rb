@@ -62,15 +62,6 @@ module MakeRb
 		# TODO - better parsing here
 		flagstring.split(" ")
 	end
-	# Escapes the given array of command line arguments into a string suitable for shell execution.
-	# Is the inverse of {parseFlags}
-	# @param [Array] args
-	# @param String Where to redirect stdout
-	# @return [String]
-	def MakeRb.buildCmd(args, redirStdout = nil)
-		# TODO - escaping here
-		args.join(" ") + if(redirStdout == nil) then "" else " > #{redirStdout}" end
-	end
 	# Adds a newline to the end of the given string, if it has none and is not empty
 	# @param [String] str
 	# @return [String]
@@ -318,11 +309,6 @@ module MakeRb
 	class GeneratedFileRes < FileRes
 		include Generated
 	end
-	# Marker mixin for builders; if included, the Builder class will attempt to redirect output of the 
-	# builder program to the first output file which is a FileRes. Useful for builder aplications
-	# that always output to stdout.
-	module StdoutBuilder
-	end
 	# Base class for builders. Derived classes should represent types of external programs that perform a
 	# certain task (e.g. compiling C sources, like {MakeRbCCxx::Compiler}), and provide a general interface
 	# for that (via the {SettingsMatrix}). These classes should then be used as base classes for concrete
@@ -367,10 +353,10 @@ module MakeRb
 				}
 			}
 		end
-		# Called by {BuildMgr}. Calls the appropriate {Usable#preUse}, {Generated#postBuild} methods, calls
-		# {Builder#buildDo} and uses its return value as the arguments to start the actual program. If
-		# {Builder#buildDo} returns nil, it does nothing.
-		def build
+		# Called by {BuildMgr}. Calls the appropriate {Usable#preUse}, {Generated#postBuild} methods and calls
+		# {Builder#buildDo}.
+		# @param [MultiSpawn] ms The multispawner used for this build process.
+		def build(ms)
 			MakeRb.safePreUse(@sources)
 			begin
 				MakeRb.safePreBuild(@targets)
@@ -380,36 +366,16 @@ module MakeRb
 			end
 			
 			begin
-				cmd = buildDo
-#				puts "spawning " + cmd.join(" ")
-				if(cmd != nil)
-					r, w = IO.pipe
-					out,strCmd = if(self.class.include?(StdoutBuilder))
-						t = targets.find { |t| t.is_a?(FileRes) } ||
-							raise("Builder class #{self.class.name} requires (includes module StdoutBuilder) to redirect stdout to target FileRes, but no FileRes target supplied!")
-						f = t.buildMgr.effective(t.filename).to_s
-						[f,MakeRb.buildCmd(cmd, f)]
-					else
-						[w,MakeRb.buildCmd(cmd)]
-					end
-					
-					pid = spawn(*cmd, :out=>out, :err=>w, r=>:close, :in=>@buildMgr.nativeSettings[:nullFile])
-					w.close
-					
-					[cmd, pid, r, strCmd]
-				else
-					nil
-				end
+				buildDo(ms)
 			rescue
 				@sources.each { |s| s.postUse }
 				@targets.each { |s| s.postBuild }
 				raise
 			end
 		end
-		# To be implemented by deriving classes.
-		# @return [Array] of String's, which are used as the program's arguments. The first one is the
-		#   program's name, e.g.: ["gcc", "-c", "-o", "test.o", "test.c"]
-		def buildDo
+		# To be implemented by deriving classes. Perform the actual build steps. raise a {MultiSpawn::JobError} in case of external errors
+		# @param [MultiSpawn] ms The multispawner used for this build process. Call {MultiSpawn#runcmd} or (#{MultiSpawn#spawn} and #{MultiSpawn#wait} and #{MultiSpawn#finish}) on it to launch processes.
+		def buildDo(ms)
 			raise "Builder#buildDo has to be overriden!"
 		end
 		# Used by {BuildMgr}
@@ -434,8 +400,8 @@ module MakeRb
 			super(mgr,spec,src,t)
 			@buildBlock = block
 		end
-		def buildDo
-			@buildBlock.call(sources, targets, sumSpecialisations)
+		def buildDo(*args)
+			@buildBlock.call(sources, targets, sumSpecialisations, *args)
 		end
 	end
 end

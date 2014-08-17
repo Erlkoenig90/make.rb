@@ -1,42 +1,12 @@
 #!/usr/bin/env ruby
 
+require 'makerb_multispawn'
+
 module MakeRb
 	# The main object for building. It keeps the list of {Builder}s and {Resource}s, and has the algorithms
 	# to find out when to run which builder. Also reads the command line arguments.
 	class BuildMgr
 		class LockedException < Exception
-		end
-
-		# Represents a running builder
-		class Job
-			attr_accessor :pid, :pipe, :out, :builder, :cmd, :strCmd
-			def initialize(cmd_, pid_, pipe_, builder_, strCmd_)
-				@pid = pid_
-				@pipe = pipe_
-				@out = ""
-				@builder = builder_
-				@cmd = cmd_
-				@strCmd = strCmd_
-			end
-
-			def read(force = false)
-				if(force)
-					@out << @pipe.read
-				else
-					r = 0
-					begin
-						if(!(@pipe.eof?))
-							str = @pipe.read_nonblock(8*1024)
-							r = str.length
-							@out << str
-						end
-					end while r > 0 && !(@pipe.eof?)
-				end
-			end
-
-			def eof?
-				@pipe.eof?
-			end
 		end
 
 		attr_reader :jobs, :settings, :builders, :resources, :reshash, :builddir, :root, :mec, :typeKeys, :force
@@ -60,99 +30,41 @@ module MakeRb
 		def build(targets)
 			procs = []
 
-			run = true
-			while(run)
-				if(@debug) then puts "== ITERATION ==" end
-				# Start new tasks
-				while(procs.length < @jobs || @jobs == 0)
-					builder = nil
-					locked = false
-					targets.each { |target|
-						begin
-							builder = find(target)
-						rescue LockedException
-							locked = true
-						end
-						if (builder != nil)
-							break
-						end
-					}
-					if(builder == nil)
-						if(@debug) then puts "Nothing to build found" end
-						break
-					else
-						builder.lock
-						res = builder.build
-						if(res != nil)
-							proc = Job.new(res[0], res[1], res[2], builder, res [3])
-							#							puts MakeRb.buildCmd(proc.cmd)
-							procs << proc
-						else
-							builder.unlock
-						end
-					end
-				end
 
-				if(procs.count == 0)
-					puts "Nothing to do anymore."
-					break
-				end
-
-				# Wait for input
-				fds = procs.map { |j| j.pipe }
-
-				if(fds.length == 0)
-					puts "Error: fds.length = 0. jcount = " + jcount.to_s
-					exit
-				end
-
-				if(@debug) then $stdout.write "==SELECT== " end
-				before = Time.now
-				IO.select(fds)
-				delay = Time.now - before
-				if(@debug) then puts delay.to_s end
-
-				forcewait = false
-				procs.delete_if { |proc|
-					# Read input data
-					proc.read(forcewait)
-
-					# Exited or force wait
-					if(forcewait || proc.eof?)
-						begin
-							Process.waitpid(proc.pid)
-						end while (!($?.exited?))
-						
-						proc.builder.targets.each { |t| t.forceRebuilt = true }
-						if($?.exitstatus != 0)
-							puts "Command failed:"
-							puts MakeRb.buildCmd(proc.cmd)
-							$stdout.write MakeRb.ensureNewline(proc.out)
-							if(!@keepgoing)
-								run = false
-								forcewait = true
-							end
-							@exitcode = 1
-						elsif(proc.builder.rebuild?)
-							puts "This build process suceeded, but target is still outdated/nonexistent:"
-							puts MakeRb.buildCmd(proc.cmd)
-							$stdout.write MakeRb.ensureNewline(proc.out)
-							if(!@keepgoing)
-								run = false
-								forcewait = true
-							end
-							@exitcode = 1
-						else
-							puts proc.strCmd
-							$stdout.write MakeRb.ensureNewline(proc.out)
-							proc.builder.unlock
-						end
-						true
-					else
-						false
-					end
-				}
-			end
+      ms = MultiSpawn.new
+      
+      ms.run(@jobs, @keepgoing) {
+        builder = nil
+        locked = false
+        targets.each { |target|
+          begin
+            builder = find(target)
+          rescue LockedException
+            locked = true
+          end
+          if (builder != nil)
+            break
+          end
+        }
+        if(builder == nil)
+          false
+        else
+          begin
+            builder.lock
+            
+            res = builder.build(ms)
+            
+            if(builder.rebuild?)
+              raise MultiSpawn::JobError("Build process (builder #{builder.class.name}) for targets " + builder.targets.inject("") { |mem,obj| mem + obj.to_s + "," } + " suceeded, but target is still outdated/nonexistent!")
+            end
+            builder.unlock
+            
+            true
+          ensure
+            builder.targets.each { |t| t.forceRebuilt = true }
+          end
+        end
+      }
 		end
 
 		# Finds a target to build next

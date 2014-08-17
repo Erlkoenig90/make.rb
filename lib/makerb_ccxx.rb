@@ -31,6 +31,16 @@ module MakeRbCCxx
 	class Header < MakeRb::FileRes
 		include MakeRb::ImplicitSrc
 	end
+	
+	# File containing hexadecimal (intel hex) representation of a program image
+	class HexFile < MakeRb::FileRes
+    include MakeRb::Generated;
+  end
+  # Flat binary program image
+  class BinFile < MakeRb::FileRes
+    include MakeRb::Generated;
+  end
+
 	# A generic C/C++ compiler. Derived classes should implement concrete compilers
 	class Compiler < MakeRb::Builder
 	end
@@ -74,10 +84,10 @@ module MakeRbCCxx
 			
 			flags + includes
 		end
-		def buildDo
+		def buildDo(ms)
 			targets.each { |t| t.makePath }
-			baseCmd + ["-o", oTarget.buildMgr.effective(oTarget.filename).to_s] +
-				if(aTarget == nil) then [] else ["-Wa,-aln=" + aTarget.buildMgr.effective(aTarget.filename).to_s] end
+			ms.runcmd(baseCmd + ["-o", oTarget.buildMgr.effective(oTarget.filename).to_s] +
+				if(aTarget == nil) then [] else ["-Wa,-aln=" + aTarget.buildMgr.effective(aTarget.filename).to_s] end)
 		end
 	end
 	class GCCDepGen < GCC
@@ -87,7 +97,7 @@ module MakeRbCCxx
 			@ofile = ofile
 			super(*x)
 		end
-		def buildDo
+		def buildDo(ms)
 			if(depTarget == nil)
 				raise "No .dep target specified"
 			end
@@ -99,7 +109,7 @@ module MakeRbCCxx
 	end
 	# Uses the GCC frontend for linking
 	class GCCLinker < MakeRbBinary::Linker
-		def buildDo
+		def buildDo(ms)
 			if(targets.size != 1 || (!targets[0].is_a?(MakeRbBinary::LinkedFile)))
 				raise "Invalid target specification"
 			end
@@ -159,13 +169,13 @@ module MakeRbCCxx
 					after = []
 				end
 				
-				[prefix + tool] + if (targets[0].is_a?(MakeRbBinary::DynLibrary))
+				ms.runcmd([prefix + tool] + if (targets[0].is_a?(MakeRbBinary::DynLibrary))
 					["-shared"]
 				else
 					[]
 				end + ["-o", targets[0].buildMgr.effective(targets[0].filename).to_s] + before +
 						sources.select{ |s| !s.is_a?(MakeRb::ImplicitSrc) && !s.is_a?(MakeRbBinary::LinkerScript) }.map{|s| s.buildMgr.effective(s.filename).to_s } +
-						startup + isrVector + ldScript + after + GCCLinker.getFlags(s,@buildMgr)
+						startup + isrVector + ldScript + after + GCCLinker.getFlags(s,@buildMgr))
 			end
 		end
 		def GCCLinker.getFlags(s,mgr=nil)
@@ -180,15 +190,25 @@ module MakeRbCCxx
 	end
 	# "objdump" disassembler
 	class GCCDisasm < MakeRbBinary::Disassembler
-		include MakeRb::StdoutBuilder
-		def buildDo
+		def buildDo(ms)
 			s = buildMgr.settings.getSettings(
 				MakeRb::SettingsKey[:builder => self, :toolchain => MakeRbCCxx.tc_gcc] + sumSpecialisations)
 			prefix = s[:clPrefix] || ""
-				
-			[prefix + "objdump", "-d", "-t", "-C"] + sources.map { |s| s.buildMgr.effective(s.filename).to_s }
+		  
+			ms.runcmd([prefix + "objdump", "-d", "-t", "-C"] + sources.map { |src| src.effective.to_s },  targets.find { |t| t.is_a?(FileRes) }.effective.to_s)
 		end
 	end
+	
+	# The binutils objcopy program for converting object file formats
+	class Objcopy < MakeRb::Builder
+    def buildDo(ms)
+      s = buildMgr.settings.getSettings(sumSpecialisations)
+      prefix = s[:clPrefix] || ""
+      ms.runcmd([prefix + "objcopy", "-O", targets[0].is_a?(HexFile) ? "ihex" : "binary", sources[0].effective.to_s, targets[0].effective.to_s])
+    end
+  end
+
+	
 	# Represents a toolchain - i.e. compiler, assembler, linker
 	class ClToolchain
 		attr_reader :compiler, :desc, :assembler, :linker, :depgen, :name, :disassembler
