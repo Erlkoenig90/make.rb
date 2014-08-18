@@ -1,6 +1,7 @@
 #!/usr/bin/env ruby
 
 require 'makerb_settings'
+require 'makerb_misc'
 
 module MakeRbCCxx
 	# A C source file
@@ -36,15 +37,16 @@ module MakeRbCCxx
 	class HexFile < MakeRb::FileRes
     include MakeRb::Generated;
   end
-  # Flat binary program image
-  class BinFile < MakeRb::FileRes
-    include MakeRb::Generated;
-  end
-
+	# Flat binary program image
+	class BinFile < MakeRb::FileRes
+		include MakeRb::Generated;
+	end
+	# File containing information about dependencies of source files and header files. Format is compiler dependant, e.g. makefile format for gcc, clang, icc, armcc
+	class HeaderDepFile < MakeRb::FileRes
+		include MakeRb::Generated
+	end
 	# A generic C/C++ compiler. Derived classes should implement concrete compilers
 	class Compiler < MakeRb::Builder
-	end
-	module DepGen
 	end
 	# The C/C++ Compiler from the GNU Compiler Collection
 	class GCC < Compiler
@@ -55,7 +57,7 @@ module MakeRbCCxx
 			@aTarget ||= targets.find { |t| t.is_a?(MakeRbBinary::AsmListingFile) }
 		end
 		def depTarget
-			@depTarget ||= targets.find { |t| t.is_a?(MakeRb::DepMakeFile) }
+			@depTarget ||= targets.find { |t| t.is_a?(HeaderDepFile) }
 		end
 		def baseCmd
 			sources.each { |s|
@@ -87,23 +89,30 @@ module MakeRbCCxx
 		def buildDo(ms)
 			targets.each { |t| t.makePath }
 			ms.runcmd(baseCmd + ["-o", oTarget.buildMgr.effective(oTarget.filename).to_s] +
-				if(aTarget == nil) then [] else ["-Wa,-aln=" + aTarget.buildMgr.effective(aTarget.filename).to_s] end)
-		end
-	end
-	class GCCDepGen < GCC
-		include DepGen
-		attr_reader :ofile
-		def initialize(*x, ofile)
-			@ofile = ofile
-			super(*x)
-		end
-		def buildDo(ms)
-			if(depTarget == nil)
-				raise "No .dep target specified"
+			if(aTarget == nil) then [] else ["-Wa,-aln=" + aTarget.buildMgr.effective(aTarget.filename).to_s] end)
+			if(depTarget != nil)
+				ms.runcmd(baseCmd + ["-M", "-MF", depTarget.effective.to_s, "-MT", oTarget.filename.to_s])
 			end
-			targets.each { |t| t.makePath }
-			baseCmd + if depTarget == nil then [] else
-				["-M", "-MT", ofile.filename.to_s, "-MF", depTarget.filename.to_s]
+		end
+		def initialize2
+			if(depTarget.exists?)
+				mk = MakeRb.loadMakeFile(depTarget.effective.to_s)
+				mk.each { |rule|
+					if(rule[0].find { |t| oTarget.matchSoft(t) || oTarget.match(t) } != nil)
+						sources.concat(rule[1].map { |d|
+							found = buildMgr.findRes(d)
+							if(found != nil)
+								if(sources.include?(found) || targets.include?(found))
+									nil
+								else
+									found
+								end
+							else
+								Header.new(buildMgr, specialisations, d)
+							end
+						}.select {|d| d != nil })
+					end
+				}
 			end
 		end
 	end
@@ -211,14 +220,13 @@ module MakeRbCCxx
 	
 	# Represents a toolchain - i.e. compiler, assembler, linker
 	class ClToolchain
-		attr_reader :compiler, :desc, :assembler, :linker, :depgen, :name, :disassembler
-		def initialize(n, d, cl, as, ld, dg, da)
+		attr_reader :compiler, :desc, :assembler, :linker, :name, :disassembler
+		def initialize(n, d, cl, as, ld, da)
 			@name = n
 			@desc = d
 			@compiler = cl
 			@assembler = as
 			@linker = ld
-			@depgen = dg
 			@disassembler = da
 		end
 		def to_s
@@ -231,7 +239,7 @@ module MakeRbCCxx
 	# The GCC toolchain
 	# @return [ClToolchain]
 	def MakeRbCCxx.tc_gcc
-		@@tc_gcc ||= ClToolchain.new("gcc", "GNU Compiler Collection", GCC, GCC, GCCLinker, GCCDepGen, GCCDisasm)
+		@@tc_gcc ||= ClToolchain.new("gcc", "GNU Compiler Collection", GCC, GCC, GCCLinker, GCCDisasm)
 	end
 	# Hash of toolchains
 	# @return [Hash]
@@ -306,6 +314,7 @@ module MakeRbLang
 			{:toolchain => MakeRbCCxx.tc_gcc, :resourceClass => MakeRbBinary::AsmListingFile} => { :fileExt => ".S" }, 
 			{:toolchain => MakeRbCCxx.tc_gcc, :resourceClass => MakeRbBinary::ObjFile} => { :fileExt => ".o" },
 			{:toolchain => MakeRbCCxx.tc_gcc, :resourceClass => MakeRbBinary::LinkerScript} => { :fileExt => ".ld" },
+      {:toolchain => MakeRbCCxx.tc_gcc, :resourceClass => MakeRbCCxx::HeaderDepFile} => { :fileExt => ".d" },
 		]
 	end
 end

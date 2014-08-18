@@ -1,53 +1,33 @@
 #!/usr/bin/env ruby
 
 module MakeRb
-	# TODO - needs to be fixed, optimized, and integrated
-	class DepMakeFile < FileRes
-		include Generated
-		include ImplicitSrc
-		def initialize2
-#			p filename
-			if(buildMgr.effective(filename).file?)
-				load
+	# Loads & parses a makefile.
+	# @return An array of dependency rules, each consisting of an 2-element-array, containing arrays of targets and sources (as strings)
+	def MakeRb.loadMakeFile(filename)
+		res = []
+		lines = IO.readlines(filename)
+		i = 0
+		while(i < lines.length)
+			while lines[i][-1] == "\r" || lines[i][-1] == "\n"
+				lines[i]=lines[i][0..-2]
+			end
+			if(lines[i][-1] == "\\")
+			lines[i]=lines[i][0..-2] + lines[i + 1]
+			lines.delete_at(i+1)
+			else
+			i = i + 1
 			end
 		end
-		def load
-			lines = IO.readlines(buildMgr.effective(filename))
-			i = 0
-			while(i < lines.length)
-				while lines[i][-1] == "\r" || lines[i][-1] == "\n"
-					lines[i]=lines[i][0..-2]
-				end
-				if(lines[i][-1] == "\\")
-					lines[i]=lines[i][0..-2] + lines[i + 1]
-					lines.delete_at(i+1)
-				else
-					i = i + 1
+		lines.each { |line|
+			if(line[0] != "\t")
+				i = line.index(':')
+				if(i != nil)
+					targets = line[0...i].split(" ")
+					deps = line[i+1..-1].split(" ")
+					res << [targets, deps]
 				end
 			end
-#			p lines
-			lines.each { |line|
-				if(line[0] != "\t")
-					i = line.index(':')
-					if(i != nil)
-						targets = line[0...i].split(" ")
-						deps = line[i+1..-1].split(" ").map { |dName| buildMgr[dName] }.select{ |dep| dep != nil }
-						targets.each { |tgName|
-							if((target = buildMgr[tgName]) != nil)
-								target.builder.sources << self
-								target.builder.sources.uniq!
-							end
-						}
-#						puts name + "=[" + builder.sources.map {|s| s.name}.join(", ") + "]<=" + deps.map { |d| d.name }.join(", ")
-						builder.sources.concat(deps)
-						builder.sources.uniq!
-#						puts "==>" + builder.sources.map {|s| s.name}.join(", ")
-					end
-				end
-			}
-		end
-		def DepMakeFile.auto(src)
-			DepMakeFile.new(src.buildMgr, src.filename.sub_ext(".dep"))
-		end
+		}
+		res
 	end
 end

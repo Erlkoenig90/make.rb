@@ -250,6 +250,9 @@ module MakeRb
 #			if(res) then raise "test" end
 			res
 		end
+		def exists?
+		  File.file?(effective)
+		end
 		# Creates the directory of this file, if it does not already exist.
 		def makePath
 			buildMgr.effective(filename).dirname.mkpath
@@ -281,7 +284,7 @@ module MakeRb
 				end
 			else
 #				false
-				@filename_str == m || match_hard(Pathname.new(m))
+				@filename_str == m || match(Pathname.new(m))
 			end
 		end
 		# Yields the Pathname to really be used on building (e.g. in the build directory). See {BuildMgr#effective}
@@ -393,6 +396,10 @@ module MakeRb
 		def to_s
 			"Builder#" + object_id.to_s
 		end
+    # To be overwritten by derived classes, if needed. Called by the BuildMgr after all the user-defined
+    # {Builder} and {Resource} objects have been created.
+    def initialize2
+    end
 	end
 	# A builder that calls a block for {Builder#buildDo}. Used by the convenience API.
 	class InlineBuilder < Builder

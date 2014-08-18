@@ -55,7 +55,7 @@ module MakeRb
             res = builder.build(ms)
             
             if(builder.rebuild?)
-              raise MultiSpawn::JobError("Build process (builder #{builder.class.name}) for targets " + builder.targets.inject("") { |mem,obj| mem + obj.to_s + "," } + " suceeded, but target is still outdated/nonexistent!")
+              raise MultiSpawn::JobError.new("Build process (builder #{builder.class.name}) for targets " + builder.targets.inject("") { |mem,obj| mem + obj.name.to_s + "," } + " suceeded, but target is still outdated/nonexistent!")
             end
             builder.unlock
             
@@ -167,6 +167,7 @@ module MakeRb
 
 			decl.declare
 			@resources.each { |r| r.initialize2 }
+			@builders.each { |b| b.initialize2 }
 
 			if (ARGV.size == 1 && ARGV[0] == "clean")
 				@resources.each { |r|
