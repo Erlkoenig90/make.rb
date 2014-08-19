@@ -96,10 +96,11 @@ module MakeRb
 	# Represents a data set to be used by builders. In most cases, the derived class {FileRes} will be used. This
 	# is the abstract form, which could also represent e.g. a database.
 	class Resource
-		attr_accessor :builder, :buildMgr, :specialisations, :forceRebuilt
+		attr_accessor :builder, :srcBuilders, :buildMgr, :specialisations, :forceRebuilt
 		# @param [BuildMgr] mgr
 		def initialize(mgr, spec)
 			@builder = nil
+			@srcBuilders = []
 			@buildMgr = mgr
 			@specialisations = spec
 			@forceRebuilt = false
@@ -336,9 +337,14 @@ module MakeRb
 				@targets = t
 			end
 			@targets.each { |t| t.builder=self }
+			
+			@sources.each { |s|
+				s.srcBuilders << self
+			}
 
 			@specialisations = spec
 			@buildMgr = mgr
+			@rebuild = nil # Cache to speed up rebuild?
 			
 			mgr << self
 		end
@@ -350,32 +356,45 @@ module MakeRb
 		# Calls {Resource#rebuild?} on every source-target combination.
 		# @return [Boolean]
 		def rebuild?
-			@targets.inject(false) { |old,target|
-				old || @sources.inject(false) { |old2,source|
-					old2 || target.rebuild?(source)
+			if(@rebuild != nil)
+				@rebuild
+			else
+				@rebuild = @targets.inject(false) { |old,target|
+					old || @sources.inject(false) { |old2,source|
+						old2 || target.rebuild?(source)
+					}
 				}
-			}
+			end
 		end
 		# Called by {BuildMgr}. Calls the appropriate {Usable#preUse}, {Generated#postBuild} methods and calls
 		# {Builder#buildDo}.
 		# @param [MultiSpawn] ms The multispawner used for this build process.
 		def build(ms)
-			MakeRb.safePreUse(@sources)
 			begin
-				MakeRb.safePreBuild(@targets)
-			rescue
-				@sources.each { |s| s.postUse }
-				raise
-			end
-			
-			begin
-				buildDo(ms)
-			rescue
-				@sources.each { |s| s.postUse }
-				@targets.each { |s| s.postBuild }
-				raise
+				MakeRb.safePreUse(@sources)
+				begin
+					MakeRb.safePreBuild(@targets)
+				rescue
+					@sources.each { |s| s.postUse }
+					raise
+				end
+				
+				begin
+					buildDo(ms)
+				rescue
+					@sources.each { |s| s.postUse }
+					@targets.each { |s| s.postBuild }
+					raise
+				end
+			ensure
+				@rebuild = nil
+				targets.each { |t| t.srcBuilders.each { |b| b.clearRebuildCache } }
 			end
 		end
+		def clearRebuildCache
+			@rebuild = nil
+		end
+		
 		# To be implemented by deriving classes. Perform the actual build steps. raise a {MultiSpawn::JobError} in case of external errors
 		# @param [MultiSpawn] ms The multispawner used for this build process. Call {MultiSpawn#runcmd} or (#{MultiSpawn#spawn} and #{MultiSpawn#wait} and #{MultiSpawn#finish}) on it to launch processes.
 		def buildDo(ms)

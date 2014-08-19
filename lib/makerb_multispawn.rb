@@ -141,7 +141,6 @@ module MakeRb
         # Run jobs
         while(true)
           begin
-            sleep(0)
             @procs.each { |proc| proc.read }
             reapChilds
             

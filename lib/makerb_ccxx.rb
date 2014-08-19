@@ -95,13 +95,13 @@ module MakeRbCCxx
 			end
 		end
 		def initialize2
-			if(depTarget.exists?)
+			if(depTarget != nil && depTarget.exists?)
 				mk = MakeRb.loadMakeFile(depTarget.effective.to_s)
 				mk.each { |rule|
 					if(rule[0].find { |t| oTarget.matchSoft(t) || oTarget.match(t) } != nil)
-						sources.concat(rule[1].map { |d|
+						rule[1].each { |d|
 							found = buildMgr.findRes(d)
-							if(found != nil)
+							h = if(found != nil)
 								if(sources.include?(found) || targets.include?(found))
 									nil
 								else
@@ -110,7 +110,11 @@ module MakeRbCCxx
 							else
 								Header.new(buildMgr, specialisations, d)
 							end
-						}.select {|d| d != nil })
+							if(h != nil)
+								sources << h
+								h.srcBuilders << self
+							end
+						}
 					end
 				}
 			end
