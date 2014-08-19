@@ -60,6 +60,7 @@ module MakeRbCCxx
 			@depTarget ||= targets.find { |t| t.is_a?(HeaderDepFile) }
 		end
 		def baseCmd
+			return @baseCmd if(@baseCmd != nil)
 			sources.each { |s|
 				if (!s.is_a?(MakeRb::FileRes))
 					raise "Invalid source specification"
@@ -76,8 +77,8 @@ module MakeRbCCxx
 			cpp = (s[:cppDefines] || {}).map{|n,v| "-D#{n}=#{v}"}
 			
 			
-			[prefix + tool, "-c"] +
-				sources.select{ |s| !s.is_a?(MakeRb::ImplicitSrc) }.map{|s| s.buildMgr.effective(s.filename).to_s } +
+			@baseCmd = [prefix + tool, "-c"] +
+				sources.select{ |src| !src.is_a?(MakeRb::ImplicitSrc) }.map{|src| src.buildMgr.effective(src.filename).to_s } +
 					GCC.getFlags(s, @buildMgr) + cpp
 		end
 		def GCC.getFlags(s,mgr = nil)

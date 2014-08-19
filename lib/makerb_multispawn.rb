@@ -126,6 +126,7 @@ module MakeRb
         @procs = Set.new
         @notify = Set.new
         @npipe = IO.pipe
+        rval = true
         
         Signal.trap("CHLD") {
           @npipe[1].write("x")
@@ -159,7 +160,7 @@ module MakeRb
 #                puts "No more jobs"
                 if(@jobs.size() == 1)
 #                  puts "Finished => return true" 
-                  return true
+                  return rval
                 else
                   break
                 end
@@ -170,7 +171,8 @@ module MakeRb
             end
           rescue JobError => e
             puts e.to_s
-            return false if(!keepGoing)
+            rval = false
+            return rval if(!keepGoing)
           ensure
             if(@currentJob != nil)
 #              puts "Removing job #{@currentJob}"

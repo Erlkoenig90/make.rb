@@ -1,6 +1,7 @@
 #!/usr/bin/env ruby
 
 require 'makerb_multispawn'
+require 'ruby-prof'
 
 module MakeRb
 	# The main object for building. It keeps the list of {Builder}s and {Resource}s, and has the algorithms
@@ -31,40 +32,40 @@ module MakeRb
 			procs = []
 
 
-      ms = MultiSpawn.new
-      
-      ms.run(@jobs, @keepgoing) {
-        builder = nil
-        locked = false
-        targets.each { |target|
-          begin
-            builder = find(target)
-          rescue LockedException
-            locked = true
-          end
-          if (builder != nil)
-            break
-          end
-        }
-        if(builder == nil)
-          false
-        else
-          begin
-            builder.lock
-            
-            res = builder.build(ms)
-            
-            if(builder.rebuild?)
-              raise MultiSpawn::JobError.new("Build process (builder #{builder.class.name}) for targets " + builder.targets.inject("") { |mem,obj| mem + obj.name.to_s + "," } + " suceeded, but target is still outdated/nonexistent!")
-            end
-            builder.unlock
-            
-            true
-          ensure
-            builder.targets.each { |t| t.forceRebuilt = true }
-          end
-        end
-      }
+			ms = MultiSpawn.new
+
+			ms.run(@jobs, @keepgoing) {
+				builder = nil
+				locked = false
+				targets.each { |target|
+					begin
+						builder = find(target)
+					rescue LockedException
+					locked = true
+					end
+					if (builder != nil)
+					break
+					end
+				}
+				if(builder == nil)
+				false
+				else
+					begin
+						builder.lock
+
+						res = builder.build(ms)
+
+						if(builder.rebuild?)
+							raise MultiSpawn::JobError.new("Build process (builder #{builder.class.name}) for targets " + builder.targets.inject("") { |mem,obj| mem + obj.name.to_s + "," } + " suceeded, but target is still outdated/nonexistent!")
+						end
+						builder.unlock
+
+						true
+					ensure
+						builder.targets.each { |t| t.forceRebuilt = true }
+					end
+				end
+			}
 		end
 
 		# Finds a target to build next
@@ -194,9 +195,7 @@ module MakeRb
 				if(@verbose)
 					puts "Building targets: " + targets.map {|t| t.name }.join(", ")
 				end
-				@exitcode = 0
 				build(targets)
-				@exitcode
 			end
 		end
 	
@@ -206,7 +205,7 @@ module MakeRb
 		# etc. methods.
 		# @param [Proc] block The block should define the {Builder}s and {Resource}s for the program using {MakeRbConv}'s methods
 		def BuildMgr.run(&block)
-			ImplDeclarations.new(block)
+			ImplDeclarations.new(block).run
 		end
 
 		# Adds the given object to the {BuildMgr}'s knowledge, to make them available for building.
@@ -262,13 +261,15 @@ module MakeRb
 		def initialize
 			@buildMgr = BuildMgr.new
 			@conv = MakeRbConv.new(@buildMgr)
-			@buildMgr.run(self)
 		end
 		def declare
 			namespaceDeObfuscator = self
 			@conv.instance_eval(&namespaceDeObfuscator.declarec)
 		end
 		def options
+		end
+		def run
+			@buildMgr.run(self)
 		end
 	end
 	# TODO doc
