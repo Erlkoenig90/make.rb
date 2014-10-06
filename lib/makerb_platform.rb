@@ -156,7 +156,7 @@ module MakeRb
 							}])
 						
 						
-							mcus = [["STM32F407VG", m4f], ["STM32F373CC", m4f], ["STM32F103RBT6", m3], ["LPC1758FBD80", m3]]
+							mcus = [["STM32F407VG", m4f], ["STM32F373CC", m4f], ["STM32F103RBT6", m3], ["LPC1758FBD80", m3], ["STM32L100RC", m3]]
 							mcus.each { |name, core|
 								cpp = {name => "1"}
 								if(name[0..4] == "STM32")
